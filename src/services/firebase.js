@@ -1,16 +1,16 @@
-// Firebase Client for Full Cloud Persistence across Reloads + LocalStorage Fallback
+// Firebase Client configured for Project hyoid-f67d0 with LocalStorage Persistence Fallback
 
 const LOCAL_STORAGE_KEY = 'college_timetable_generator_clean_v2';
 const FIREBASE_CONFIG_KEY = 'college_timetable_firebase_config_v1';
 
-// Default Firebase Configuration (can be updated dynamically via UI Settings)
+// User's Firebase Web Configuration for Project: hyoid-f67d0
 export const DEFAULT_FIREBASE_CONFIG = {
-  apiKey: "AIzaSyCollegeTimetableClientKey-Demo",
-  authDomain: "college-timetable-generator.firebaseapp.com",
-  projectId: "college-timetable-generator",
-  storageBucket: "college-timetable-generator.appspot.com",
-  messagingSenderId: "123456789012",
-  appId: "1:123456789012:web:abcdef123456"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBmff-MIHbbKTC6zSVuTrsp3FY0t-CWB8k",
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "hyoid-f67d0.firebaseapp.com",
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "hyoid-f67d0",
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "hyoid-f67d0.firebasestorage.app",
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "794370439907",
+  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:794370439907:web:f6e4afed129d5dcc69e3d6"
 };
 
 export const getSavedFirebaseConfig = () => {
@@ -52,7 +52,7 @@ export const persistState = async (state) => {
       fields: {
         payloadJson: { stringValue: JSON.stringify(state) },
         lastUpdated: { stringValue: new Date().toISOString() },
-        department: { stringValue: state.department || 'CSE' }
+        department: { stringValue: state.department || 'Engineering' }
       }
     };
 
@@ -65,11 +65,11 @@ export const persistState = async (state) => {
     if (res.ok) {
       return { success: true, mode: 'firebase' };
     } else {
-      // Firebase responded with non-200 (e.g. demo key or permissions), local storage is safe
-      return { success: true, mode: 'local', warning: `Firebase HTTP ${res.status}` };
+      const errJson = await res.json().catch(() => ({}));
+      const errMsg = errJson.error?.message || `HTTP ${res.status}`;
+      return { success: true, mode: 'local', warning: errMsg };
     }
   } catch (err) {
-    // Network offline / blocked, fallback is active
     return { success: true, mode: 'local', warning: err.message };
   }
 };
@@ -78,8 +78,8 @@ export const persistState = async (state) => {
 export const loadPersistedState = async () => {
   const config = getSavedFirebaseConfig();
 
-  // Try Firebase Firestore first if project is configured
-  if (config && config.projectId && !config.apiKey?.includes('Demo')) {
+  // Try Firebase Firestore
+  if (config && config.projectId) {
     try {
       const url = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/timetable_workspaces/default_workspace?key=${config.apiKey || ''}`;
       const res = await fetch(url);
@@ -92,11 +92,11 @@ export const loadPersistedState = async () => {
         }
       }
     } catch (err) {
-      console.warn('Firebase sync offline, falling back to local storage:', err.message);
+      console.warn('Firebase Firestore load error, using local storage cache:', err.message);
     }
   }
 
-  // Load from LocalStorage
+  // Fallback to LocalStorage
   try {
     const local = localStorage.getItem(LOCAL_STORAGE_KEY);
     if (local) {
