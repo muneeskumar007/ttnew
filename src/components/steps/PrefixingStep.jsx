@@ -24,13 +24,14 @@ export const PrefixingStep = ({
   allocations,
   prefixedSlots,
   setPrefixedSlots,
+  setActiveStep,
 }) => {
   const [selectedSectionId, setSelectedSectionId] = useState(sections[0]?.id || '');
   const [modalSlot, setModalSlot] = useState(null); // { day, period }
 
   const activeSection = sections.find((s) => s.id === selectedSectionId) || sections[0];
-  const secAlloc = allocations[activeSection?.id] || {};
-  const secPrefixed = prefixedSlots[activeSection?.id] || {};
+  const secAlloc = (activeSection && allocations[activeSection.id]) || {};
+  const secPrefixed = (activeSection && prefixedSlots[activeSection.id]) || {};
 
   // Subjects assigned to this section
   const assignedSubjects = subjects.filter(
@@ -222,6 +223,28 @@ export const PrefixingStep = ({
         </div>
       </div>
 
+      {!activeSection ? (
+        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs">
+          <div className="max-w-md mx-auto space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mx-auto">
+              <Lock className="w-6 h-6" />
+            </div>
+            <h3 className="font-bold text-slate-900 text-base">No Section Configured</h3>
+            <p className="text-xs text-slate-500">
+              Please create at least one Class Section in Step 3 to view the schedule grid, pre-allocate theory hours, and lock lab blocks.
+            </p>
+            <div className="pt-2">
+              <button
+                onClick={() => setActiveStep?.(3)}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white shadow-md shadow-indigo-100"
+              >
+                Go to Step 3: Create Section &rarr;
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <>
       {/* Dynamic Tally & Reconciliation Engine Banner (Gatekeeper) */}
       <div
         className={`rounded-2xl p-5 border transition-all ${
@@ -491,6 +514,8 @@ export const PrefixingStep = ({
           </table>
         </div>
       </div>
+      </>
+      )}
 
       {/* PREFIX MODAL (Choose Theory or Continuous Lab Block) */}
       {modalSlot && (

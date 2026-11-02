@@ -17,6 +17,7 @@ export const FacultyMatrixStep = ({
   timetables,
   subjects,
   sections,
+  setActiveStep,
 }) => {
   const [selectedFacultyId, setSelectedFacultyId] = useState(faculty[0]?.id || '');
   const activeFaculty = faculty.find((f) => f.id === selectedFacultyId) || faculty[0];
@@ -114,6 +115,28 @@ export const FacultyMatrixStep = ({
         </div>
       </div>
 
+      {!activeFaculty ? (
+        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs">
+          <div className="max-w-md mx-auto space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mx-auto">
+              <Users className="w-6 h-6" />
+            </div>
+            <h3 className="font-bold text-slate-900 text-base">No Faculty Added Yet</h3>
+            <p className="text-xs text-slate-500">
+              Please add your department's faculty members in Step 1 to view their weekly workload box schedules and clash detection.
+            </p>
+            <div className="pt-2">
+              <button
+                onClick={() => setActiveStep?.(1)}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white shadow-md shadow-indigo-100"
+              >
+                Go to Step 1: Faculty Management &rarr;
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+      <>
       {/* Faculty Summary Header Bar */}
       <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
@@ -271,6 +294,8 @@ export const FacultyMatrixStep = ({
           </table>
         </div>
       </div>
+      </>
+      )}
     </div>
   );
 };

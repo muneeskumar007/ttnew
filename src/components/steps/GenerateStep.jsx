@@ -34,7 +34,7 @@ export const GenerateStep = ({
     tally: computeSectionTally(sec.id, subjects, allocations, prefixedSlots),
   }));
 
-  const allBalanced = sectionTallies.every((st) => st.tally.isBalanced);
+  const allBalanced = sections.length > 0 && sectionTallies.every((st) => st.tally.isBalanced);
   const unbalancedSections = sectionTallies.filter((st) => !st.tally.isBalanced);
 
   // Trigger generator
@@ -119,7 +119,25 @@ export const GenerateStep = ({
       </div>
 
       {/* Gatekeeper Check Card */}
-      {!allBalanced && (
+      {sections.length === 0 ? (
+        <div className="p-8 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 space-y-3 text-center">
+          <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-700 mx-auto">
+            <AlertTriangle className="w-6 h-6" />
+          </div>
+          <h4 className="font-bold text-sm text-amber-950">No Class Sections Configured</h4>
+          <p className="text-xs text-amber-800 max-w-md mx-auto">
+            Please add your Faculty in Step 1, Subjects in Step 2, and create Sections in Step 3 before generating schedules.
+          </p>
+          <div className="pt-2">
+            <button
+              onClick={() => setActiveStep?.(3)}
+              className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white shadow-md shadow-indigo-100"
+            >
+              Step 3: Create Class Section &rarr;
+            </button>
+          </div>
+        </div>
+      ) : !allBalanced && (
         <div className="p-5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 space-y-3">
           <div className="flex items-center gap-2 font-bold text-sm text-amber-950">
             <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />

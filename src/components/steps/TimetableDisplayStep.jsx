@@ -23,6 +23,7 @@ export const TimetableDisplayStep = ({
   timetables,
   setTimetables,
   prefixedSlots,
+  setActiveStep,
 }) => {
   const [selectedSectionId, setSelectedSectionId] = useState(sections[0]?.id || '');
   const [selectedSlotForSwap, setSelectedSlotForSwap] = useState(null); // { day, period }
@@ -241,6 +242,27 @@ export const TimetableDisplayStep = ({
       )}
 
       {/* Main Timetable Card (Print-ready) */}
+      {!activeSection ? (
+        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs">
+          <div className="max-w-md mx-auto space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mx-auto">
+              <Grid className="w-6 h-6" />
+            </div>
+            <h3 className="font-bold text-slate-900 text-base">No Timetables Generated Yet</h3>
+            <p className="text-xs text-slate-500">
+              Please enter your manual data (Faculty, Subjects, Sections, Allocations), then generate your schedules in Step 6.
+            </p>
+            <div className="pt-2">
+              <button
+                onClick={() => setActiveStep?.(1)}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white shadow-md shadow-indigo-100"
+              >
+                Go to Step 1: Faculty Management &rarr;
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
       <div className="bg-white rounded-2xl border border-slate-200 shadow-xs overflow-hidden print-landscape">
         {/* Printable Header */}
         <div className="p-4 sm:p-5 border-b border-slate-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 bg-slate-50/50">
@@ -439,6 +461,7 @@ export const TimetableDisplayStep = ({
           </table>
         </div>
       </div>
+      )}
     </div>
   );
 };

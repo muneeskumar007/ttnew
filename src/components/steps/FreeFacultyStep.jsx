@@ -23,6 +23,7 @@ export const FreeFacultyStep = ({
   sections,
   subjects,
   setTimetables,
+  setActiveStep,
 }) => {
   const [selectedDay, setSelectedDay] = useState('Monday');
   const [selectedPeriod, setSelectedPeriod] = useState(1);
@@ -183,6 +184,28 @@ export const FreeFacultyStep = ({
         </button>
       </div>
 
+      {faculty.length === 0 ? (
+        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs">
+          <div className="max-w-md mx-auto space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mx-auto">
+              <UserCheck className="w-6 h-6" />
+            </div>
+            <h3 className="font-bold text-slate-900 text-base">No Faculty Added Yet</h3>
+            <p className="text-xs text-slate-500">
+              Please add your department's teachers and professors in Step 1 to look up real-time free faculty and substitute assignments.
+            </p>
+            <div className="pt-2">
+              <button
+                onClick={() => setActiveStep?.(1)}
+                className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white shadow-md shadow-indigo-100"
+              >
+                Go to Step 1: Faculty Management &rarr;
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : (
+      <>
       {/* Selector Controls Bar */}
       <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs grid grid-cols-1 sm:grid-cols-2 gap-4">
         {/* Day Selector */}
@@ -364,6 +387,8 @@ export const FreeFacultyStep = ({
           )}
         </div>
       </div>
+      </>
+      )}
 
       {/* SUBSTITUTE ASSIGNMENT MODAL */}
       {substituteModal && (

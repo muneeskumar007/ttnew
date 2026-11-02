@@ -19,11 +19,12 @@ export const AllocationStep = ({
   faculty,
   allocations,
   setAllocations,
+  setActiveStep,
 }) => {
   const [selectedSectionId, setSelectedSectionId] = useState(sections[0]?.id || '');
 
   const activeSection = sections.find((s) => s.id === selectedSectionId) || sections[0];
-  const sectionAlloc = allocations[activeSection?.id] || {};
+  const sectionAlloc = (activeSection && allocations[activeSection.id]) || {};
 
   // Subjects applicable to the active section's year
   const sectionSubjects = subjects.filter((s) => s.year === activeSection?.year);
@@ -161,7 +162,46 @@ export const AllocationStep = ({
         </div>
       </div>
 
-      {/* Main Grid: Subject Mapping (Left) & Real-time Workload Meter (Right) */}
+      {!activeSection ? (
+        <div className="bg-white rounded-2xl border border-slate-200 p-12 text-center shadow-xs">
+          <div className="max-w-md mx-auto space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 mx-auto">
+              <UserCheck className="w-6 h-6" />
+            </div>
+            <h3 className="font-bold text-slate-900 text-base">Prerequisites Needed</h3>
+            <p className="text-xs text-slate-500">
+              Please create at least one Class Section (Step 3), add Faculty (Step 1), and add Subjects (Step 2) to start mapping teachers to subjects.
+            </p>
+            <div className="flex flex-wrap items-center justify-center gap-2 pt-2">
+              {faculty.length === 0 && (
+                <button
+                  onClick={() => setActiveStep?.(1)}
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700"
+                >
+                  Step 1: Add Faculty
+                </button>
+              )}
+              {subjects.length === 0 && (
+                <button
+                  onClick={() => setActiveStep?.(2)}
+                  className="px-3.5 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-xs font-semibold text-slate-700"
+                >
+                  Step 2: Add Subjects
+                </button>
+              )}
+              {sections.length === 0 && (
+                <button
+                  onClick={() => setActiveStep?.(3)}
+                  className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-xs font-semibold text-white shadow-md shadow-indigo-100"
+                >
+                  Step 3: Create Section
+                </button>
+              )}
+            </div>
+          </div>
+        </div>
+      ) : (
+      /* Main Grid: Subject Mapping (Left) & Real-time Workload Meter (Right) */
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: Allocation Cards for Active Section */}
         <div className="lg:col-span-2 space-y-4">
@@ -421,6 +461,7 @@ export const AllocationStep = ({
           </div>
         </div>
       </div>
+      )}
     </div>
   );
 };

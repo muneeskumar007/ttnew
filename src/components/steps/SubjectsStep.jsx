@@ -285,6 +285,31 @@ export const SubjectsStep = ({ subjects, setSubjects }) => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
+              {filteredSubjects.length === 0 && (
+                <tr>
+                  <td colSpan={8} className="py-14 text-center">
+                    <div className="max-w-sm mx-auto space-y-3">
+                      <div className="w-12 h-12 rounded-2xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 mx-auto">
+                        <BookOpen className="w-6 h-6" />
+                      </div>
+                      <div>
+                        <h4 className="font-bold text-slate-900 text-sm">No Curriculum Subjects Added</h4>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Add strictly Theory and continuous Lab subjects for 1st, 2nd, 3rd, or 4th Year.
+                        </p>
+                      </div>
+                      <div className="flex items-center justify-center gap-2 pt-1">
+                        <button
+                          onClick={handleOpenAdd}
+                          className="px-4 py-2 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-xl shadow-md shadow-indigo-100 transition-colors"
+                        >
+                          + Add First Subject
+                        </button>
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
               {filteredSubjects.map((s) => {
                 const palette = SUBJECT_PALETTES.find((p) => p.id === s.colorId) || SUBJECT_PALETTES[0];
                 const totalH = (s.theoryHours || 0) + (s.labHours || 0);
