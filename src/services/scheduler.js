@@ -157,6 +157,10 @@ const LAB_BLOCK_TEMPLATES = {
       [3, 4],
     ],
   },
+  1: {
+    weekday: [[1], [2], [3], [4], [5], [6], [7]],
+    saturday: [[1], [2], [3], [4]],
+  },
 };
 
 // Evaluates slot penalty enforcing random positions, period staggering, and zero column stacking
@@ -440,7 +444,7 @@ function solveSectionWithFastState({
           break;
         }
       }
-      if (secHasLabToday && Math.random() < 0.75) continue;
+      if (secHasLabToday && mode !== 'minimal' && Math.random() < 0.75) continue;
 
       const templates =
         day === 'Saturday'
@@ -502,13 +506,27 @@ function solveSectionWithFastState({
     assignedHistory.forEach(({ day, period, fId }) => {
       delete facultyBusy[fId][day][period];
     });
-    return { success: false, reason: 'Could not place labs' };
+    const failedLab = remainingLabs[0];
+    return {
+      success: false,
+      reason: 'Could not place labs',
+      detail: failedLab
+        ? `Could not find open consecutive periods for "${failedLab.subjectName}" (${failedLab.blockSize}h lab block) with faculty [${failedLab.facultyIds.join(', ') || 'Unassigned'}].`
+        : 'Could not place remaining lab blocks.',
+      failedSubject: failedLab?.subjectCode,
+      failedSubjectName: failedLab?.subjectName,
+      failedFacultyIds: failedLab?.facultyIds,
+      failedSectionId: sec.id,
+      failedSectionName: sec.name,
+    };
   }
 
   // 4. Solve Theory with Staggered Slot Allocation
   let iters = 0;
+  let maxReachedTIdx = -1;
   const solveTheory = (tIdx) => {
     iters++;
+    if (tIdx > maxReachedTIdx) maxReachedTIdx = tIdx;
     if (iters > 8000) return false;
     if (tIdx >= remainingTheory.length) return true;
 
@@ -582,7 +600,20 @@ function solveSectionWithFastState({
     assignedHistory.forEach(({ day, period, fId }) => {
       delete facultyBusy[fId][day][period];
     });
-    return { success: false, reason: 'Could not place theory' };
+    const failedItem = remainingTheory[maxReachedTIdx >= 0 ? maxReachedTIdx : 0];
+    return {
+      success: false,
+      reason: 'Could not place theory',
+      detail: failedItem
+        ? `Exhausted collision-free slots for "${failedItem.subjectName}" (${failedItem.subjectCode}) taught by ${failedItem.facultyIds?.[0] ? `faculty ${failedItem.facultyIds[0]}` : 'unassigned faculty'}.`
+        : 'Could not find valid period assignments for all theory hours.',
+      failedSubject: failedItem?.subjectCode,
+      failedSubjectName: failedItem?.subjectName,
+      failedFacultyId: failedItem?.facultyIds?.[0],
+      failedSectionId: sec.id,
+      failedSectionName: sec.name,
+      iters,
+    };
   }
 
   return { success: true, grid, iters };
@@ -731,6 +762,187 @@ export const auditTimetableQuality = (timetables, sections, subjects, faculty) =
   };
 };
 
+// Comprehensive Pre-flight Conflict & Bottleneck Detector
+// Identifies exact impossible conditions, slot deficits, and faculty over-allocations BEFORE or DURING scheduling
+export const detectSchedulingConflicts = ({
+  sections,
+  subjects,
+  faculty,
+  allocations,
+  prefixedSlots = {},
+  targetScope = 'all',
+  existingTimetables = {},
+}) => {
+  let targetSections = sections;
+  if (targetScope && targetScope !== 'all') {
+    if (typeof targetScope === 'number' || targetScope.startsWith('year-')) {
+      const yr = typeof targetScope === 'number' ? targetScope : parseInt(targetScope.replace('year-', ''), 10);
+      targetSections = sections.filter((s) => s.year === yr);
+    } else if (targetScope.startsWith('section-') || sections.some((s) => s.id === targetScope)) {
+      const sId = targetScope.replace('section-', '');
+      targetSections = sections.filter((s) => s.id === sId);
+    }
+  }
+
+  if (!targetSections || targetSections.length === 0) {
+    return [
+      {
+        type: 'NO_SECTIONS',
+        severity: 'warning',
+        title: 'No Class Sections Found',
+        message: 'No class sections were found for the selected generation scope.',
+        solution: 'Select another scope or create class sections in Step 3.',
+      },
+    ];
+  }
+
+  const conflicts = [];
+
+  // 1. Gatekeeper Tally Check for each target section
+  targetSections.forEach((sec) => {
+    const tally = computeSectionTally(sec.id, subjects, allocations, prefixedSlots);
+    if (!tally.isBalanced) {
+      conflicts.push({
+        type: 'GATEKEEPER_TALLY_MISMATCH',
+        severity: 'error',
+        sectionId: sec.id,
+        sectionName: sec.name,
+        title: `39-Hour Tally Not Reconciled: ${sec.name}`,
+        message: tally.statusMessage,
+        solution: 'Adjust curriculum hours in Step 2 or prefixed slots in Step 5 so total hours equal 39.',
+        step: 5,
+      });
+    }
+  });
+
+  // 2. Faculty Slot Capacity & Conflict Analysis
+  faculty.forEach((f) => {
+    const lockedCount = (f.lockedSlots || []).length;
+    const existingBookings = [];
+    let bookedHours = 0;
+
+    // Check existing timetables outside target scope
+    Object.entries(existingTimetables || {}).forEach(([sId, sGrid]) => {
+      if (!targetSections.some((ts) => ts.id === sId)) {
+        const secObj = sections.find((s) => s.id === sId);
+        let secHours = 0;
+        const slotsList = [];
+
+        DAYS.forEach((d) => {
+          for (let p = 1; p <= DAY_PERIODS[d]; p++) {
+            const slot = sGrid[d]?.[p];
+            if (slot && slot.facultyIds && slot.facultyIds.includes(f.id)) {
+              secHours++;
+              slotsList.push(`${d.slice(0, 3)} P${p}`);
+            }
+          }
+        });
+
+        if (secHours > 0) {
+          bookedHours += secHours;
+          existingBookings.push({
+            sectionId: sId,
+            sectionName: secObj ? secObj.name : sId,
+            hours: secHours,
+            slots: slotsList,
+          });
+        }
+      }
+    });
+
+    const availableSlots = TOTAL_WEEKLY_PERIODS - lockedCount - bookedHours;
+
+    let totalTargetHours = 0;
+    const targetSectionBreakdown = [];
+
+    targetSections.forEach((sec) => {
+      const secAlloc = allocations[sec.id] || {};
+      const secSubjects = subjects.filter((s) => s.year === sec.year);
+      let secHours = 0;
+      const subjectsTaught = [];
+
+      secSubjects.forEach((sub) => {
+        const alloc = secAlloc[sub.code];
+        if (!alloc) return;
+        let isTaught = false;
+        if (alloc.theoryFaculty === f.id && sub.theoryHours > 0) {
+          secHours += sub.theoryHours;
+          isTaught = true;
+        }
+        if (alloc.labFaculty && alloc.labFaculty.includes(f.id) && sub.labHours > 0) {
+          secHours += sub.labHours;
+          isTaught = true;
+        }
+        if (isTaught) {
+          subjectsTaught.push(`${sub.code} (${sub.name})`);
+        }
+      });
+
+      if (secHours > 0) {
+        totalTargetHours += secHours;
+        targetSectionBreakdown.push({
+          sectionId: sec.id,
+          sectionName: sec.name,
+          hours: secHours,
+          subjects: subjectsTaught,
+        });
+
+        // Single Section Deficit (Direct Mathematical Impossibility)
+        if (secHours > availableSlots) {
+          const shortage = secHours - availableSlots;
+          conflicts.push({
+            type: 'FACULTY_SLOT_DEFICIT',
+            severity: 'error',
+            facultyId: f.id,
+            facultyName: f.name,
+            sectionId: sec.id,
+            sectionName: sec.name,
+            requiredHours: secHours,
+            availableSlots,
+            shortage,
+            bookedHours,
+            existingBookings,
+            lockedHours: lockedCount,
+            subjectsTaught,
+            title: `Severe Schedule Bottleneck: ${f.name} Over-Assigned`,
+            message: `${f.name} (${f.id}) is assigned ${secHours} hours in "${sec.name}", but only has ${availableSlots} free periods available in the week (${bookedHours > 0 ? `already teaching ${bookedHours}h in ${existingBookings.map((b) => b.sectionName).join(', ')}` : ''}${lockedCount > 0 ? `, ${lockedCount}h locked in other departments` : ''}). Deficit: ${shortage} periods.`,
+            solution: `Go to Step 4 (Faculty Mapping) and reassign some subjects of "${sec.name}" to other faculty members, or clear the conflicting timetable for ${existingBookings.map((b) => b.sectionName).join(', ')}.`,
+            step: 4,
+          });
+        }
+      }
+    });
+
+    // Combined Target Sections Deficit (Multi-section impossibility within current scope)
+    if (
+      targetSections.length > 1 &&
+      totalTargetHours > availableSlots &&
+      !conflicts.some((c) => c.facultyId === f.id && c.type === 'FACULTY_SLOT_DEFICIT')
+    ) {
+      const shortage = totalTargetHours - availableSlots;
+      conflicts.push({
+        type: 'FACULTY_COMBINED_DEFICIT',
+        severity: 'error',
+        facultyId: f.id,
+        facultyName: f.name,
+        targetSections: targetSectionBreakdown,
+        requiredHours: totalTargetHours,
+        availableSlots,
+        shortage,
+        bookedHours,
+        existingBookings,
+        lockedHours: lockedCount,
+        title: `Cross-Section Over-Allocation: ${f.name}`,
+        message: `${f.name} (${f.id}) is assigned a combined total of ${totalTargetHours} hours across the selected sections (${targetSectionBreakdown.map((t) => `${t.sectionName}: ${t.hours}h`).join(', ')}), but only has ${availableSlots} open periods available in the entire week. Deficit: ${shortage} periods.`,
+        solution: `Redistribute subjects across other faculty in Step 4 so that ${f.name}'s total combined hours do not exceed ${availableSlots} hours.`,
+        step: 4,
+      });
+    }
+  });
+
+  return conflicts;
+};
+
 // Main High-Performance Constraint Satisfaction Scheduler
 // Handles Whole Year, All Years, or Single Section in under 5ms with zero lag and randomized period allocation!
 export const generateDepartmentTimetable = ({
@@ -743,6 +955,28 @@ export const generateDepartmentTimetable = ({
   existingTimetables = {},
 }) => {
   const startTime = performance.now();
+
+  // 0. Pre-flight conflict & bottleneck detection
+  const detectedConflicts = detectSchedulingConflicts({
+    sections,
+    subjects,
+    faculty,
+    allocations,
+    prefixedSlots,
+    targetScope,
+    existingTimetables,
+  });
+
+  const fatalConflict = detectedConflicts.find((c) => c.severity === 'error');
+  if (fatalConflict) {
+    return {
+      success: false,
+      error: fatalConflict.message,
+      errorType: fatalConflict.type,
+      diagnostics: fatalConflict,
+      allConflicts: detectedConflicts,
+    };
+  }
 
   // 1. Determine target sections to generate based on targetScope
   let targetSections = sections;
@@ -816,6 +1050,7 @@ export const generateDepartmentTimetable = ({
   let solvedTimetables = null;
   let totalIterations = 0;
   let successfulAttempt = 1;
+  let lastAttemptFailure = null;
 
   for (let attempt = 0; attempt < MAX_RESTARTS; attempt++) {
     // Fast clone of base faculty occupancy
@@ -851,6 +1086,7 @@ export const generateDepartmentTimetable = ({
 
       if (!res.success) {
         allOk = false;
+        lastAttemptFailure = res;
         break;
       }
       totalIterations += res.iters || 0;
@@ -867,10 +1103,23 @@ export const generateDepartmentTimetable = ({
   const endTime = performance.now();
 
   if (!solvedTimetables) {
+    const lastErr = lastAttemptFailure || {};
     return {
       success: false,
       error:
+        lastErr.detail ||
         'Scheduling engine encountered a constraint conflict across sections. Please check for excessive Other Department Locked Hours or over-allocated faculty.',
+      errorType: 'CONSTRAINT_SATISFACTION_EXHAUSTED',
+      diagnostics: {
+        category: 'CSP Backtracking Limit',
+        title: 'Constraint Satisfaction Limit Reached',
+        sectionName: lastErr.failedSectionName || 'Unknown Section',
+        subjectName: lastErr.failedSubjectName || lastErr.failedSubject || 'Unknown Subject',
+        facultyId: lastErr.failedFacultyId || null,
+        reason: lastErr.reason || 'Backtracking limit reached',
+        detail: lastErr.detail || 'Could not find a valid collision-free slot after 35 restarts.',
+        solution: 'Try re-assigning overloaded faculty, reducing locked hours, or generating all years simultaneously.',
+      },
       iterations: totalIterations,
     };
   }
