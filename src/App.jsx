@@ -54,6 +54,7 @@ export function App() {
   const [lastSaved, setLastSaved] = useState(null);
   const [syncNotice, setSyncNotice] = useState(null);
   const [isInitializing, setIsInitializing] = useState(true);
+  const [revertBackup, setRevertBackup] = useState(null);
 
   const isLoadedRef = useRef(false);
   const currentConfig = getFirebaseConfig();
@@ -157,23 +158,74 @@ export function App() {
 
   // Clear all data both in state and in online Firebase Firestore
   const handleClearAllData = async () => {
-    if (confirm('Clear all data to a clean blank slate? This will reset all records directly in Firebase Cloud Firestore.')) {
-      setDepartment('Engineering & Technology');
-      setFaculty([]);
-      setSubjects([]);
-      setSections([]);
-      setAllocations({});
-      setPrefixedSlots({});
-      setTimetables({});
-      setActiveStep(1);
+    // Snapshot current state for instant Revert option
+    const backup = {
+      department,
+      faculty: [...faculty],
+      subjects: [...subjects],
+      sections: [...sections],
+      allocations: JSON.parse(JSON.stringify(allocations)),
+      prefixedSlots: JSON.parse(JSON.stringify(prefixedSlots)),
+      timetables: JSON.parse(JSON.stringify(timetables)),
+      activeStep,
+      timestamp: new Date().toISOString(),
+    };
+    setRevertBackup(backup);
 
-      setSyncStatus('syncing');
-      await clearPersistedState();
+    // Reset state to completely blank
+    setDepartment('Engineering & Technology');
+    setFaculty([]);
+    setSubjects([]);
+    setSections([]);
+    setAllocations({});
+    setPrefixedSlots({});
+    setTimetables({});
+    setActiveStep(1);
+
+    setSyncStatus('syncing');
+    await clearPersistedState();
+    setSyncStatus('synced');
+    setLastSaved(new Date().toISOString());
+    setSyncNotice({
+      type: 'info',
+      text: 'All data cleared. Click "Revert All Data" in the top navbar if you wish to restore your previous workspace.',
+    });
+    setTimeout(() => setSyncNotice(null), 5000);
+  };
+
+  // Revert all data back to the saved snapshot
+  const handleRevertAllData = async () => {
+    if (!revertBackup) return;
+
+    setDepartment(revertBackup.department || 'Engineering & Technology');
+    setFaculty(revertBackup.faculty || []);
+    setSubjects(revertBackup.subjects || []);
+    setSections(revertBackup.sections || []);
+    setAllocations(revertBackup.allocations || {});
+    setPrefixedSlots(revertBackup.prefixedSlots || {});
+    setTimetables(revertBackup.timetables || {});
+    setActiveStep(revertBackup.activeStep || 1);
+
+    setSyncStatus('syncing');
+    const res = await persistState({
+      department: revertBackup.department,
+      faculty: revertBackup.faculty,
+      subjects: revertBackup.subjects,
+      sections: revertBackup.sections,
+      allocations: revertBackup.allocations,
+      prefixedSlots: revertBackup.prefixedSlots,
+      timetables: revertBackup.timetables,
+    });
+
+    if (res.success) {
       setSyncStatus('synced');
-      setLastSaved(new Date().toISOString());
-      setSyncNotice({ type: 'info', text: 'Workspace cleared in Firebase Cloud. Ready for manual entry.' });
-      setTimeout(() => setSyncNotice(null), 3000);
+      setLastSaved(res.lastUpdated);
     }
+    setSyncNotice({
+      type: 'success',
+      text: 'All timetable data successfully restored from previous backup!',
+    });
+    setTimeout(() => setSyncNotice(null), 4000);
   };
 
   // Optional: Load demo data if ever requested
@@ -234,7 +286,9 @@ export function App() {
         syncStatus={syncStatus}
         lastSaved={lastSaved}
         onClearAllData={handleClearAllData}
-        onLoadDemoData={handleLoadDemoData}
+        canRevert={Boolean(revertBackup && (revertBackup.faculty?.length > 0 || revertBackup.subjects?.length > 0 || revertBackup.sections?.length > 0))}
+        revertTimestamp={revertBackup?.timestamp}
+        onRevertAllData={handleRevertAllData}
         onSaveConfig={handleSaveConfig}
         onTriggerSync={handleTriggerSync}
       />
