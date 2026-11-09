@@ -368,6 +368,10 @@ export function App() {
                 subjects={subjects}
                 allocations={allocations}
                 setAllocations={setAllocations}
+                prefixedSlots={prefixedSlots}
+                setPrefixedSlots={setPrefixedSlots}
+                timetables={timetables}
+                setTimetables={setTimetables}
               />
             )}
 
