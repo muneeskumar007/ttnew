@@ -10,10 +10,16 @@ import {
   Layers, 
   Check, 
   ArrowRight,
-  RefreshCw
+  RefreshCw,
+  Award,
+  Sun,
+  RotateCcw,
+  Zap,
+  GraduationCap
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { generateDepartmentTimetable, computeSectionTally } from '../../services/scheduler';
+import { YEARS, YEAR_LABELS } from '../../types/constants';
 
 export const GenerateStep = ({
   sections,
@@ -25,29 +31,42 @@ export const GenerateStep = ({
   setTimetables,
   setActiveStep,
 }) => {
+  const [selectedScope, setSelectedScope] = useState('all'); // 'all' | 'year-1' | 'year-2' | 'year-3' | 'year-4' | sectionId
   const [isSolving, setIsSolving] = useState(false);
   const [solverResult, setSolverResult] = useState(null);
 
-  // Check Gatekeeper status for ALL sections
-  const sectionTallies = sections.map((sec) => ({
+  // Compute target sections based on selectedScope
+  const getTargetSections = () => {
+    if (selectedScope === 'all') return sections;
+    if (selectedScope.startsWith('year-')) {
+      const yr = parseInt(selectedScope.replace('year-', ''), 10);
+      return sections.filter((s) => s.year === yr);
+    }
+    return sections.filter((s) => s.id === selectedScope);
+  };
+
+  const targetSections = getTargetSections();
+
+  // Check Gatekeeper status for TARGET sections
+  const sectionTallies = targetSections.map((sec) => ({
     section: sec,
     tally: computeSectionTally(sec.id, subjects, allocations, prefixedSlots),
   }));
 
-  const allBalanced = sections.length > 0 && sectionTallies.every((st) => st.tally.isBalanced);
+  const allBalanced = targetSections.length > 0 && sectionTallies.every((st) => st.tally.isBalanced);
   const unbalancedSections = sectionTallies.filter((st) => !st.tally.isBalanced);
 
   // Trigger generator
   const handleGenerate = () => {
     if (!allBalanced) {
-      alert('Cannot generate timetable: Some sections do not satisfy the 39-hour tally reconciliation constraint.');
+      alert('Cannot generate timetable: Some sections in the selected scope do not satisfy the 39-hour tally reconciliation constraint.');
       return;
     }
 
     setIsSolving(true);
     setSolverResult(null);
 
-    // Use setTimeout so the UI can render the solving spinner
+    // Fast asynchronous invocation to allow UI to render spinner before instant solve
     setTimeout(() => {
       const res = generateDepartmentTimetable({
         sections,
@@ -55,6 +74,8 @@ export const GenerateStep = ({
         faculty,
         allocations,
         prefixedSlots,
+        targetScope: selectedScope,
+        existingTimetables: timetables,
       });
 
       setIsSolving(false);
@@ -62,31 +83,105 @@ export const GenerateStep = ({
 
       if (res.success) {
         setTimetables(res.timetables);
-        // Fire confetti celebration!
         confetti({
-          particleCount: 80,
-          spread: 70,
+          particleCount: 90,
+          spread: 80,
           origin: { y: 0.6 },
         });
       }
-    }, 200);
+    }, 120);
   };
+
+  const metrics = solverResult?.stats?.qualityMetrics;
+
+  // Available years that actually have sections
+  const availableYears = YEARS.filter((yr) => sections.some((s) => s.year === yr));
 
   return (
     <div className="space-y-6">
-      {/* Top Banner */}
+      {/* Scope Selector Card */}
+      <div className="bg-white rounded-2xl p-5 border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <div className="flex items-center gap-2">
+            <GraduationCap className="w-5 h-5 text-indigo-600" />
+            <h3 className="font-bold text-sm text-slate-900">
+              Timetable Generation Scope
+            </h3>
+          </div>
+          <p className="text-xs text-slate-500 mt-0.5">
+            Generate schedules for the entire year or college department at once without any lag.
+          </p>
+        </div>
+
+        {/* Scope Buttons */}
+        <div className="flex items-center gap-1.5 flex-wrap">
+          <button
+            onClick={() => setSelectedScope('all')}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+              selectedScope === 'all'
+                ? 'bg-indigo-600 text-white shadow-xs'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+            }`}
+          >
+            All Years ({sections.length} Sec)
+          </button>
+
+          {YEARS.map((yr) => {
+            const secInYear = sections.filter((s) => s.year === yr);
+            if (secInYear.length === 0) return null;
+            const scopeKey = `year-${yr}`;
+            return (
+              <button
+                key={scopeKey}
+                onClick={() => setSelectedScope(scopeKey)}
+                className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition-all ${
+                  selectedScope === scopeKey
+                    ? 'bg-indigo-600 text-white shadow-xs'
+                    : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+                }`}
+              >
+                {YEAR_LABELS[yr]} ({secInYear.length} Sec)
+              </button>
+            );
+          })}
+
+          {/* Section dropdown for single-section targeting */}
+          <select
+            value={selectedScope.startsWith('SEC-') ? selectedScope : ''}
+            onChange={(e) => e.target.value && setSelectedScope(e.target.value)}
+            className="px-2.5 py-1.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 focus:outline-hidden"
+          >
+            <option value="">Single Section...</option>
+            {sections.map((sec) => (
+              <option key={sec.id} value={sec.id}>
+                {sec.name}
+              </option>
+            ))}
+          </select>
+        </div>
+      </div>
+
+      {/* Top Banner & Generation Action */}
       <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <div className="flex items-center gap-2">
             <h2 className="text-xl font-bold text-slate-900">
-              Automated CSP Scheduling Engine
+              Timetable Generation & Optimization Engine
             </h2>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-              Constraint Backtracking
+            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
+              High-Speed CSP Solver (&lt;10ms)
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Solves all remaining unassigned theory and lab hours while strictly adhering to hard constraints and pedagogical distribution rules.
+            Targeting{' '}
+            <strong className="text-slate-800">
+              {selectedScope === 'all'
+                ? 'All Department Sections'
+                : selectedScope.startsWith('year-')
+                ? `Whole Year ${selectedScope.replace('year-', '')} (${targetSections.length} sections)`
+                : targetSections[0]?.name || 'Selected Section'}
+            </strong>
+            . Enforces 2h AM / 2h PM split, Period 1 rotation, slot staggering, and faculty rest gaps with zero collisions.
           </p>
         </div>
 
@@ -106,12 +201,18 @@ export const GenerateStep = ({
             {isSolving ? (
               <>
                 <RefreshCw className="w-4 h-4 animate-spin" />
-                <span>Running CSP Engine...</span>
+                <span>Solving Constraints...</span>
               </>
             ) : (
               <>
                 <Play className="w-4 h-4 fill-current" />
-                <span>Generate College Timetable</span>
+                <span>
+                  {selectedScope === 'all'
+                    ? 'Generate All Timetables'
+                    : selectedScope.startsWith('year-')
+                    ? `Generate Whole Year ${selectedScope.replace('year-', '')}`
+                    : `Generate ${targetSections[0]?.name || 'Section'}`}
+                </span>
               </>
             )}
           </button>
@@ -119,14 +220,14 @@ export const GenerateStep = ({
       </div>
 
       {/* Gatekeeper Check Card */}
-      {sections.length === 0 ? (
+      {targetSections.length === 0 ? (
         <div className="p-8 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 space-y-3 text-center">
           <div className="w-12 h-12 rounded-2xl bg-amber-100 flex items-center justify-center text-amber-700 mx-auto">
             <AlertTriangle className="w-6 h-6" />
           </div>
-          <h4 className="font-bold text-sm text-amber-950">No Class Sections Configured</h4>
+          <h4 className="font-bold text-sm text-amber-950">No Class Sections in Selected Scope</h4>
           <p className="text-xs text-amber-800 max-w-md mx-auto">
-            Please add your Faculty in Step 1, Subjects in Step 2, and create Sections in Step 3 before generating schedules.
+            Please add your Faculty in Step 1, Subjects in Step 2, and create Sections in Step 3 for this year before generating schedules.
           </p>
           <div className="pt-2">
             <button
@@ -141,7 +242,7 @@ export const GenerateStep = ({
         <div className="p-5 rounded-2xl bg-amber-50 border border-amber-300 text-amber-900 space-y-3">
           <div className="flex items-center gap-2 font-bold text-sm text-amber-950">
             <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0" />
-            <span>Gatekeeper Warning: 39-Period Tally Not Reconciled</span>
+            <span>Gatekeeper Warning: 39-Period Tally Not Reconciled in Target Scope</span>
           </div>
           <p className="text-xs text-amber-800">
             The automated generator cannot run until every section's required hours tally exactly to 39 working periods per week ($(5 \times 7) + (1 \times 4) = 39$).
@@ -168,7 +269,7 @@ export const GenerateStep = ({
         </div>
       )}
 
-      {/* Engine Status / Success Result */}
+      {/* Engine Status & Quality Score Breakdown */}
       {solverResult && (
         <div
           className={`p-6 rounded-2xl border transition-all ${
@@ -180,36 +281,45 @@ export const GenerateStep = ({
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div className="flex items-start gap-3">
               <div
-                className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${
+                className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 ${
                   solverResult.success
                     ? 'bg-emerald-600 text-white shadow-md'
                     : 'bg-rose-600 text-white shadow-md'
                 }`}
               >
                 {solverResult.success ? (
-                  <Check className="w-6 h-6 stroke-[3]" />
+                  <Check className="w-7 h-7 stroke-[3]" />
                 ) : (
-                  <AlertTriangle className="w-6 h-6" />
+                  <AlertTriangle className="w-7 h-7" />
                 )}
               </div>
               <div>
-                <h3 className="font-bold text-base">
+                <div className="flex items-center gap-2">
+                  <h3 className="font-bold text-base">
+                    {solverResult.success
+                      ? 'Timetable Generated Successfully!'
+                      : 'Scheduling Engine Error'}
+                  </h3>
+                  {solverResult.success && (
+                    <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-600 text-white shadow-2xs">
+                      Grade {solverResult.stats?.grade} ({solverResult.stats?.optimizationTier})
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs mt-1 text-slate-700">
                   {solverResult.success
-                    ? 'Timetable Generated Successfully!'
-                    : 'Scheduling Engine Error'}
-                </h3>
-                <p className="text-xs mt-1">
-                  {solverResult.success
-                    ? `Resolved all constraints across ${sections.length} sections in ${solverResult.stats?.timeMs}ms with 0 collisions!`
+                    ? `Placed 100% of curriculum hours across ${solverResult.stats?.sectionsScheduled} sections in ${solverResult.stats?.timeMs}ms with zero collisions!`
                     : solverResult.error}
                 </p>
                 {solverResult.success && solverResult.stats && (
-                  <div className="flex items-center gap-3 text-xs text-slate-600 mt-2 font-mono">
+                  <div className="flex items-center gap-3 text-xs text-slate-500 mt-2 font-mono">
                     <span>Runtime: {solverResult.stats.timeMs}ms</span>
                     <span>•</span>
-                    <span>Backtracking iterations: {solverResult.stats.iterations}</span>
+                    <span>Attempts: {solverResult.stats.attempts}</span>
                     <span>•</span>
-                    <span>Slots resolved: {solverResult.stats.totalSlots}</span>
+                    <span>Iterations: {solverResult.stats.iterations}</span>
+                    <span>•</span>
+                    <span>Total Slots Filled: {solverResult.stats.totalSlots}</span>
                   </div>
                 )}
               </div>
@@ -220,17 +330,102 @@ export const GenerateStep = ({
                 onClick={() => setActiveStep(7)}
                 className="flex items-center gap-1.5 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-emerald-600 hover:bg-emerald-700 shadow-md shadow-emerald-200 shrink-0"
               >
-                <span>View Timetables</span>
+                <span>View Timetable Grid</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             )}
           </div>
+
+          {/* Detailed Optimization Quality Audit Metrics */}
+          {solverResult.success && metrics && (
+            <div className="mt-6 pt-5 border-t border-emerald-200/60 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              {/* Metric 1 */}
+              <div className="bg-white/80 p-3.5 rounded-xl border border-emerald-100 shadow-2xs">
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span className="font-semibold text-slate-700 flex items-center gap-1">
+                    <Sun className="w-3.5 h-3.5 text-amber-500" />
+                    4h AM/PM Balance
+                  </span>
+                  <span className="font-bold text-emerald-700">{metrics.subjectBalanceScore}%</span>
+                </div>
+                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-emerald-500 rounded-full"
+                    style={{ width: `${metrics.subjectBalanceScore}%` }}
+                  />
+                </div>
+                <div className="text-[10px] text-slate-500 mt-1">
+                  Target: 2 before lunch, 2 after lunch
+                </div>
+              </div>
+
+              {/* Metric 2 */}
+              <div className="bg-white/80 p-3.5 rounded-xl border border-emerald-100 shadow-2xs">
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span className="font-semibold text-slate-700 flex items-center gap-1">
+                    <RotateCcw className="w-3.5 h-3.5 text-indigo-500" />
+                    First-Hour Rotation
+                  </span>
+                  <span className="font-bold text-indigo-700">{metrics.firstHourRotationScore}%</span>
+                </div>
+                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-indigo-500 rounded-full"
+                    style={{ width: `${metrics.firstHourRotationScore}%` }}
+                  />
+                </div>
+                <div className="text-[10px] text-slate-500 mt-1">
+                  Rotates every subject to Period 1
+                </div>
+              </div>
+
+              {/* Metric 3 */}
+              <div className="bg-white/80 p-3.5 rounded-xl border border-emerald-100 shadow-2xs">
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span className="font-semibold text-slate-700 flex items-center gap-1">
+                    <Sparkles className="w-3.5 h-3.5 text-purple-500" />
+                    Period Staggering
+                  </span>
+                  <span className="font-bold text-purple-700">{metrics.periodDiversityScore}%</span>
+                </div>
+                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-purple-500 rounded-full"
+                    style={{ width: `${metrics.periodDiversityScore}%` }}
+                  />
+                </div>
+                <div className="text-[10px] text-slate-500 mt-1">
+                  Avoids repeating same slot daily
+                </div>
+              </div>
+
+              {/* Metric 4 */}
+              <div className="bg-white/80 p-3.5 rounded-xl border border-emerald-100 shadow-2xs">
+                <div className="flex items-center justify-between text-xs mb-1">
+                  <span className="font-semibold text-slate-700 flex items-center gap-1">
+                    <Clock className="w-3.5 h-3.5 text-blue-500" />
+                    Faculty Rest Gaps
+                  </span>
+                  <span className="font-bold text-blue-700">{metrics.facultyGapsScore}%</span>
+                </div>
+                <div className="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-blue-500 rounded-full"
+                    style={{ width: `${metrics.facultyGapsScore}%` }}
+                  />
+                </div>
+                <div className="text-[10px] text-slate-500 mt-1">
+                  Prevents 3+ consecutive periods
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
 
-      {/* Constraints & Rules Visualizer Grid */}
+      {/* Constraints & Optimization Rules Visualizer Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Hard Constraints Box */}
+        {/* Box 1: Inviolable Hard Constraints */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
           <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
             <ShieldCheck className="w-5 h-5 text-rose-600" />
@@ -273,7 +468,7 @@ export const GenerateStep = ({
             <div className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
               <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
               <div>
-                <strong className="text-slate-900">Lab Continuity:</strong>
+                <strong className="text-slate-900">Continuous Lab Blocks:</strong>
                 <p className="text-slate-500 mt-0.5">
                   Remaining unprefixed labs are scheduled as 2 or 3 continuous periods within morning or afternoon sessions without crossing lunch.
                 </p>
@@ -282,52 +477,77 @@ export const GenerateStep = ({
           </div>
         </div>
 
-        {/* Pedagogical Distribution & Balance Rules Box */}
+        {/* Box 2: Subject & Faculty Allocation Optimization Constraints */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs space-y-4">
           <div className="flex items-center gap-2 pb-3 border-b border-slate-100">
             <Sparkles className="w-5 h-5 text-indigo-600" />
             <h3 className="font-bold text-sm text-slate-900">
-              Pedagogical Distribution & Balance Rules
+              Subject & Faculty Allocation Optimization
             </h3>
           </div>
 
           <div className="space-y-3 text-xs">
-            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
-              <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+            {/* Rule 1 */}
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-indigo-50/50 border border-indigo-200/70">
+              <span className="w-5 h-5 rounded-md bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0 text-[10px]">
+                1
+              </span>
               <div>
-                <strong className="text-slate-900">Weekly Spread (1 hr/day):</strong>
-                <p className="text-slate-500 mt-0.5">
-                  Theory subjects are distributed across distinct days rather than lumped together (maximum 2 hours in a single day under tight constraints).
+                <strong className="text-slate-900">Subject Hour Allocation (2h AM / 2h PM):</strong>
+                <p className="text-slate-600 mt-0.5">
+                  4-hour subjects are allocated 2 hours before lunch and 2 hours after lunch. Distributes hours evenly across the week and avoids lumping in the same half of the day.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
-              <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+            {/* Rule 2 */}
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-indigo-50/50 border border-indigo-200/70">
+              <span className="w-5 h-5 rounded-md bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0 text-[10px]">
+                2
+              </span>
               <div>
-                <strong className="text-slate-900">Slot Staggering:</strong>
-                <p className="text-slate-500 mt-0.5">
-                  Period timings alternate across days to avoid cognitive fatigue at the same time each day.
+                <strong className="text-slate-900">First-Hour Rotation (Period 1):</strong>
+                <p className="text-slate-600 mt-0.5">
+                  Every subject gets an opportunity to appear in Period 1. Each subject appears in the first hour before repeating, preventing the same subject from monopolizing morning start.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
-              <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+            {/* Rule 3 */}
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-indigo-50/50 border border-indigo-200/70">
+              <span className="w-5 h-5 rounded-md bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0 text-[10px]">
+                3
+              </span>
               <div>
-                <strong className="text-slate-900">Morning & Afternoon Balance:</strong>
-                <p className="text-slate-500 mt-0.5">
-                  Hours are balanced evenly between morning sessions (Periods 1–4) and afternoon sessions (Periods 5–7).
+                <strong className="text-slate-900">Period Rotation & Afternoon Staggering:</strong>
+                <p className="text-slate-600 mt-0.5">
+                  Rotates subjects across different period indices throughout the week. Alternates afternoon hours across Periods 5, 6, and 7 to avoid afternoon fatigue.
                 </p>
               </div>
             </div>
 
-            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
-              <CheckCircle2 className="w-4 h-4 text-indigo-600 shrink-0 mt-0.5" />
+            {/* Rule 4 & 5 */}
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-indigo-50/50 border border-indigo-200/70">
+              <span className="w-5 h-5 rounded-md bg-indigo-600 text-white font-bold flex items-center justify-center shrink-0 text-[10px]">
+                4-5
+              </span>
               <div>
-                <strong className="text-slate-900">No Fatigue Rule:</strong>
-                <p className="text-slate-500 mt-0.5">
-                  Prevents back-to-back consecutive periods of the same theory subject or same faculty member in the same section.
+                <strong className="text-slate-900">Faculty Inter-Class Balance & Gaps:</strong>
+                <p className="text-slate-600 mt-0.5">
+                  Avoids assigning the same faculty to the same period across multiple classes. Prevents 3+ consecutive back-to-back teaching periods across classes to ensure sufficient rest gaps.
+                </p>
+              </div>
+            </div>
+
+            {/* Rule 6 */}
+            <div className="flex items-start gap-2.5 p-3 rounded-xl bg-emerald-50/50 border border-emerald-200/70">
+              <span className="w-5 h-5 rounded-md bg-emerald-600 text-white font-bold flex items-center justify-center shrink-0 text-[10px]">
+                6
+              </span>
+              <div>
+                <strong className="text-emerald-950">Adaptive Best-Case vs. Worst-Case Relaxation:</strong>
+                <p className="text-slate-600 mt-0.5">
+                  Prioritizes optimal best-case distribution. If faculty constraints are tight, automatically relaxes soft penalties in subsequent passes so no periods are ever left unassigned.
                 </p>
               </div>
             </div>

@@ -30,15 +30,16 @@ import {
 import {
   persistState,
   loadPersistedState,
-  saveFirebaseConfig,
   clearPersistedState,
+  checkFirebaseStatus,
+  getFirebaseConfig,
 } from './services/firebase';
 
 import { generateDepartmentTimetable } from './services/scheduler';
-import { ArrowLeft, ArrowRight } from 'lucide-react';
+import { ArrowLeft, ArrowRight, Cloud, RefreshCw, ExternalLink, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export function App() {
-  // Starts 100% clean and empty so the user enters data manually!
+  // Pure blank manual input state
   const [department, setDepartment] = useState(INITIAL_DEPARTMENT);
   const [faculty, setFaculty] = useState(INITIAL_FACULTY);
   const [subjects, setSubjects] = useState(INITIAL_SUBJECTS);
@@ -48,35 +49,60 @@ export function App() {
   const [timetables, setTimetables] = useState({});
   const [activeStep, setActiveStep] = useState(1);
 
-  // Persistence state
-  const [storageMode, setStorageMode] = useState('local');
+  // Pure Online Firebase Cloud Sync states: 'synced' | 'syncing' | 'firestore_not_created' | 'error' | 'idle'
+  const [syncStatus, setSyncStatus] = useState('idle');
   const [lastSaved, setLastSaved] = useState(null);
+  const [syncNotice, setSyncNotice] = useState(null);
+  const [isInitializing, setIsInitializing] = useState(true);
+
   const isLoadedRef = useRef(false);
+  const currentConfig = getFirebaseConfig();
 
-  // Initial load: Only load previously manually entered data if present, otherwise remain completely blank!
-  useEffect(() => {
-    const initApp = async () => {
-      const { data, source } = await loadPersistedState();
-      if (data) {
-        setDepartment(data.department || INITIAL_DEPARTMENT);
-        setFaculty(data.faculty || []);
-        setSubjects(data.subjects || []);
-        setSections(data.sections || []);
-        setAllocations(data.allocations || {});
-        setPrefixedSlots(data.prefixedSlots || {});
-        setTimetables(data.timetables || {});
-        setStorageMode(source === 'firebase' ? 'firebase' : 'local');
-        setLastSaved(data.lastUpdated || new Date().toISOString());
+  // Load purely from Firebase Online Firestore on mount
+  const loadFromFirebase = async () => {
+    setIsInitializing(true);
+    setSyncStatus('syncing');
+
+    try {
+      const res = await loadPersistedState();
+
+      if (res.status === 'synced' && res.data) {
+        setDepartment(res.data.department || INITIAL_DEPARTMENT);
+        setFaculty(res.data.faculty || []);
+        setSubjects(res.data.subjects || []);
+        setSections(res.data.sections || []);
+        setAllocations(res.data.allocations || {});
+        setPrefixedSlots(res.data.prefixedSlots || {});
+        setTimetables(res.data.timetables || {});
+        setSyncStatus('synced');
+        setLastSaved(res.lastUpdated || new Date().toISOString());
+        setSyncNotice({ type: 'success', text: 'Loaded latest timetable data from Firebase Cloud Firestore.' });
+      } else if (res.status === 'empty') {
+        setSyncStatus('synced');
+        setSyncNotice(null);
+      } else if (res.isSetupRequired) {
+        setSyncStatus('firestore_not_created');
+      } else {
+        setSyncStatus('error');
       }
+    } catch (err) {
+      console.warn('Firebase online load error:', err);
+      setSyncStatus('error');
+    } finally {
+      setIsInitializing(false);
       isLoadedRef.current = true;
-    };
+    }
+  };
 
-    initApp();
+  useEffect(() => {
+    loadFromFirebase();
   }, []);
 
-  // Sync to persistence on state changes
+  // Sync to Firebase Cloud Firestore on any data modification
   useEffect(() => {
     if (!isLoadedRef.current) return;
+
+    setSyncStatus('syncing');
 
     const timer = setTimeout(() => {
       const payload = {
@@ -90,17 +116,48 @@ export function App() {
       };
 
       persistState(payload).then((res) => {
-        setStorageMode(res.mode);
-        setLastSaved(new Date().toISOString());
+        if (res.success) {
+          setSyncStatus('synced');
+          setLastSaved(res.lastUpdated);
+        } else if (res.isSetupRequired) {
+          setSyncStatus('firestore_not_created');
+        } else {
+          setSyncStatus('error');
+        }
       });
-    }, 600);
+    }, 800);
 
     return () => clearTimeout(timer);
   }, [department, faculty, subjects, sections, allocations, prefixedSlots, timetables]);
 
-  // Clear all data to start completely fresh and manual
-  const handleClearAllData = () => {
-    if (confirm('Clear all data to a clean blank slate? This will remove all current entries so you can input everything manually.')) {
+  // Force Save to Firebase
+  const handleTriggerSync = async () => {
+    setSyncStatus('syncing');
+    const payload = {
+      department,
+      faculty,
+      subjects,
+      sections,
+      allocations,
+      prefixedSlots,
+      timetables,
+    };
+    const res = await persistState(payload);
+    if (res.success) {
+      setSyncStatus('synced');
+      setLastSaved(res.lastUpdated);
+      setSyncNotice({ type: 'success', text: 'All timetable data successfully synchronized to Firebase Cloud!' });
+      setTimeout(() => setSyncNotice(null), 4000);
+    } else if (res.isSetupRequired) {
+      setSyncStatus('firestore_not_created');
+    } else {
+      setSyncStatus('error');
+    }
+  };
+
+  // Clear all data both in state and in online Firebase Firestore
+  const handleClearAllData = async () => {
+    if (confirm('Clear all data to a clean blank slate? This will reset all records directly in Firebase Cloud Firestore.')) {
       setDepartment('Engineering & Technology');
       setFaculty([]);
       setSubjects([]);
@@ -109,26 +166,19 @@ export function App() {
       setPrefixedSlots({});
       setTimetables({});
       setActiveStep(1);
-      clearPersistedState();
 
-      persistState({
-        department: 'Engineering & Technology',
-        faculty: [],
-        subjects: [],
-        sections: [],
-        allocations: {},
-        prefixedSlots: {},
-        timetables: {},
-      }).then((res) => {
-        setStorageMode(res.mode);
-        setLastSaved(new Date().toISOString());
-      });
+      setSyncStatus('syncing');
+      await clearPersistedState();
+      setSyncStatus('synced');
+      setLastSaved(new Date().toISOString());
+      setSyncNotice({ type: 'info', text: 'Workspace cleared in Firebase Cloud. Ready for manual entry.' });
+      setTimeout(() => setSyncNotice(null), 3000);
     }
   };
 
-  // Optional: Load sample demo data if ever requested
+  // Optional: Load demo data if ever requested
   const handleLoadDemoData = () => {
-    if (confirm('Load sample CSE demo template for reference? Current data will be replaced.')) {
+    if (confirm('Load sample CSE demo template for reference? This will sync to Firebase Cloud.')) {
       const initialGen = generateDepartmentTimetable({
         sections: DEMO_SECTIONS,
         subjects: DEMO_SUBJECTS,
@@ -148,6 +198,7 @@ export function App() {
       setTimetables(tt);
       setActiveStep(1);
 
+      setSyncStatus('syncing');
       persistState({
         department: DEMO_DEPARTMENT,
         faculty: DEMO_FACULTY,
@@ -157,42 +208,76 @@ export function App() {
         prefixedSlots: DEMO_PREFIXED_SLOTS,
         timetables: tt,
       }).then((res) => {
-        setStorageMode(res.mode);
-        setLastSaved(new Date().toISOString());
+        if (res.success) {
+          setSyncStatus('synced');
+          setLastSaved(res.lastUpdated);
+        } else if (res.isSetupRequired) {
+          setSyncStatus('firestore_not_created');
+        }
       });
     }
   };
 
-  const handleSaveConfig = (cfg) => {
-    saveFirebaseConfig(cfg);
-    persistState({
-      department,
-      faculty,
-      subjects,
-      sections,
-      allocations,
-      prefixedSlots,
-      timetables,
-    }).then((res) => {
-      setStorageMode(res.mode);
-      setLastSaved(new Date().toISOString());
-    });
+  const handleSaveConfig = () => {
+    handleTriggerSync();
   };
 
   const isGenerated = Object.keys(timetables).length > 0;
+  const firestoreConsoleUrl = `https://console.firebase.google.com/project/${currentConfig.projectId || 'hyoid-f67d0'}/firestore`;
 
   return (
     <div className="min-h-screen bg-slate-100/70 text-slate-800 flex flex-col font-sans selection:bg-indigo-500 selection:text-white">
-      {/* Navbar */}
+      {/* Top Navbar */}
       <Navbar
         department={department}
         setDepartment={setDepartment}
-        storageMode={storageMode}
+        syncStatus={syncStatus}
         lastSaved={lastSaved}
         onClearAllData={handleClearAllData}
         onLoadDemoData={handleLoadDemoData}
         onSaveConfig={handleSaveConfig}
+        onTriggerSync={handleTriggerSync}
       />
+
+      {/* Online Firebase Status / Activation Banner */}
+      {syncStatus === 'firestore_not_created' && (
+        <div className="bg-amber-500 text-slate-950 px-4 py-2.5 text-xs font-medium border-b border-amber-600/40 shadow-xs flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0 text-slate-950" />
+            <span>
+              <strong>Firebase Project {currentConfig.projectId} Connected:</strong> Cloud Firestore database needs to be activated in your Firebase Console (Choose <em>Create Database</em> &rarr; <em>Start in test mode</em>).
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            <a
+              href={firestoreConsoleUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 px-2.5 py-1 bg-slate-900 text-white rounded-lg text-xs font-semibold hover:bg-slate-800 transition-colors shadow-xs"
+            >
+              <span>1-Click Create Firestore</span>
+              <ExternalLink className="w-3 h-3" />
+            </a>
+            <button
+              onClick={handleTriggerSync}
+              className="inline-flex items-center gap-1 px-2.5 py-1 bg-white text-slate-900 rounded-lg text-xs font-semibold hover:bg-amber-100 border border-amber-400 transition-colors"
+            >
+              <RefreshCw className="w-3 h-3" />
+              <span>Retry Sync</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Notice Toast */}
+      {syncNotice && (
+        <div className="bg-indigo-600 text-white px-4 py-2 text-xs flex items-center justify-between">
+          <div className="flex items-center gap-2 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-300" />
+            <span>{syncNotice.text}</span>
+          </div>
+        </div>
+      )}
 
       {/* Stepper Navigation */}
       <StepperNav
@@ -203,102 +288,114 @@ export function App() {
 
       {/* Main Step Content */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6">
-        {activeStep === 1 && (
-          <FacultyStep faculty={faculty} setFaculty={setFaculty} />
-        )}
+        {isInitializing ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="w-12 h-12 rounded-2xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 mb-3 animate-pulse">
+              <Cloud className="w-6 h-6" />
+            </div>
+            <p className="text-sm font-semibold text-slate-700">Connecting to Firebase Cloud Firestore...</p>
+            <p className="text-xs text-slate-400 mt-1">Checking online workspace for project {currentConfig.projectId}</p>
+          </div>
+        ) : (
+          <>
+            {activeStep === 1 && (
+              <FacultyStep faculty={faculty} setFaculty={setFaculty} />
+            )}
 
-        {activeStep === 2 && (
-          <SubjectsStep subjects={subjects} setSubjects={setSubjects} />
-        )}
+            {activeStep === 2 && (
+              <SubjectsStep subjects={subjects} setSubjects={setSubjects} />
+            )}
 
-        {activeStep === 3 && (
-          <SectionsStep
-            sections={sections}
-            setSections={setSections}
-            faculty={faculty}
-            subjects={subjects}
-            allocations={allocations}
-            setAllocations={setAllocations}
-          />
-        )}
+            {activeStep === 3 && (
+              <SectionsStep
+                sections={sections}
+                setSections={setSections}
+                faculty={faculty}
+                subjects={subjects}
+                allocations={allocations}
+                setAllocations={setAllocations}
+              />
+            )}
 
-        {activeStep === 4 && (
-          <AllocationStep
-            sections={sections}
-            subjects={subjects}
-            faculty={faculty}
-            allocations={allocations}
-            setAllocations={setAllocations}
-            setActiveStep={setActiveStep}
-          />
-        )}
+            {activeStep === 4 && (
+              <AllocationStep
+                sections={sections}
+                subjects={subjects}
+                faculty={faculty}
+                allocations={allocations}
+                setAllocations={setAllocations}
+                setActiveStep={setActiveStep}
+              />
+            )}
 
-        {activeStep === 5 && (
-          <PrefixingStep
-            sections={sections}
-            subjects={subjects}
-            faculty={faculty}
-            allocations={allocations}
-            prefixedSlots={prefixedSlots}
-            setPrefixedSlots={setPrefixedSlots}
-            setActiveStep={setActiveStep}
-          />
-        )}
+            {activeStep === 5 && (
+              <PrefixingStep
+                sections={sections}
+                subjects={subjects}
+                faculty={faculty}
+                allocations={allocations}
+                prefixedSlots={prefixedSlots}
+                setPrefixedSlots={setPrefixedSlots}
+                setActiveStep={setActiveStep}
+              />
+            )}
 
-        {activeStep === 6 && (
-          <GenerateStep
-            sections={sections}
-            subjects={subjects}
-            faculty={faculty}
-            allocations={allocations}
-            prefixedSlots={prefixedSlots}
-            timetables={timetables}
-            setTimetables={setTimetables}
-            setActiveStep={setActiveStep}
-          />
-        )}
+            {activeStep === 6 && (
+              <GenerateStep
+                sections={sections}
+                subjects={subjects}
+                faculty={faculty}
+                allocations={allocations}
+                prefixedSlots={prefixedSlots}
+                timetables={timetables}
+                setTimetables={setTimetables}
+                setActiveStep={setActiveStep}
+              />
+            )}
 
-        {activeStep === 7 && (
-          <TimetableDisplayStep
-            sections={sections}
-            subjects={subjects}
-            faculty={faculty}
-            timetables={timetables}
-            setTimetables={setTimetables}
-            prefixedSlots={prefixedSlots}
-            setActiveStep={setActiveStep}
-          />
-        )}
+            {activeStep === 7 && (
+              <TimetableDisplayStep
+                sections={sections}
+                subjects={subjects}
+                faculty={faculty}
+                timetables={timetables}
+                setTimetables={setTimetables}
+                prefixedSlots={prefixedSlots}
+                setActiveStep={setActiveStep}
+              />
+            )}
 
-        {activeStep === 8 && (
-          <FacultyMatrixStep
-            faculty={faculty}
-            timetables={timetables}
-            subjects={subjects}
-            sections={sections}
-            setActiveStep={setActiveStep}
-          />
-        )}
+            {activeStep === 8 && (
+              <FacultyMatrixStep
+                faculty={faculty}
+                timetables={timetables}
+                subjects={subjects}
+                sections={sections}
+                setActiveStep={setActiveStep}
+              />
+            )}
 
-        {activeStep === 9 && (
-          <FreeFacultyStep
-            faculty={faculty}
-            timetables={timetables}
-            sections={sections}
-            subjects={subjects}
-            setTimetables={setTimetables}
-            setActiveStep={setActiveStep}
-          />
-        )}
+            {activeStep === 9 && (
+              <FreeFacultyStep
+                faculty={faculty}
+                timetables={timetables}
+                sections={sections}
+                subjects={subjects}
+                setTimetables={setTimetables}
+                setActiveStep={setActiveStep}
+              />
+            )}
 
-        {activeStep === 10 && (
-          <ExportStep
-            sections={sections}
-            subjects={subjects}
-            faculty={faculty}
-            timetables={timetables}
-            setActiveStep={setActiveStep}
-          />
+            {activeStep === 10 && (
+              <ExportStep
+                sections={sections}
+                subjects={subjects}
+                faculty={faculty}
+                timetables={timetables}
+                setActiveStep={setActiveStep}
+              />
+            )}
+          </>
         )}
 
         {/* Stepper Footer Controls */}

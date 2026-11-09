@@ -2,24 +2,26 @@ import React, { useState } from 'react';
 import { 
   Calendar, 
   Cloud, 
-  Database, 
   Trash2, 
   Settings, 
   Edit2, 
   Check, 
   RefreshCw,
-  FolderOpen
+  FolderOpen,
+  CloudUpload,
+  AlertTriangle
 } from 'lucide-react';
 import { FirebaseModal } from './FirebaseModal';
 
 export const Navbar = ({
   department,
   setDepartment,
-  storageMode,
+  syncStatus, // 'synced' | 'syncing' | 'error' | 'firestore_not_created' | 'idle'
   lastSaved,
   onClearAllData,
   onLoadDemoData,
   onSaveConfig,
+  onTriggerSync,
 }) => {
   const [showConfigModal, setShowConfigModal] = useState(false);
   const [isEditingDept, setIsEditingDept] = useState(false);
@@ -90,35 +92,55 @@ export const Navbar = ({
 
           {/* Persistence & Actions */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Storage Status Pill */}
+            {/* Storage Status Pill - 100% Online Firebase */}
             <div
               onClick={() => setShowConfigModal(true)}
-              className="hidden md:flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all bg-slate-800 hover:bg-slate-700 border border-slate-700"
-              title="Click to view or edit Firebase & persistence settings"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all bg-slate-800 hover:bg-slate-700 border border-slate-700 select-none"
+              title="Click to inspect Firebase Cloud Firestore sync"
             >
-              {storageMode === 'firebase' ? (
+              {syncStatus === 'syncing' ? (
                 <>
-                  <Cloud className="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-                  <span className="text-emerald-300">Firebase Synced</span>
+                  <RefreshCw className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
+                  <span className="text-indigo-300">Saving to Cloud...</span>
+                </>
+              ) : syncStatus === 'firestore_not_created' ? (
+                <>
+                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                  <span className="text-amber-300">Firestore Setup Needed</span>
+                </>
+              ) : syncStatus === 'error' ? (
+                <>
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                  <span className="text-rose-300">Firebase Reconnecting</span>
                 </>
               ) : (
                 <>
-                  <Database className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="text-amber-200">Local Cache Persistent</span>
+                  <Cloud className="w-3.5 h-3.5 text-emerald-400" />
+                  <span className="text-emerald-300">Firebase Online</span>
                 </>
               )}
               {lastSaved && (
-                <span className="text-slate-400 text-[10px]">
+                <span className="hidden sm:inline text-slate-400 text-[10px]">
                   ({new Date(lastSaved).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })})
                 </span>
               )}
             </div>
 
+            {/* Quick Force Sync Button */}
+            <button
+              onClick={onTriggerSync}
+              className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition-colors"
+              title="Save current changes to Firebase Cloud immediately"
+            >
+              <CloudUpload className="w-3.5 h-3.5 text-indigo-400" />
+              <span>Save Cloud</span>
+            </button>
+
             {/* Clear All / Start Blank Button */}
             <button
               onClick={onClearAllData}
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-rose-300 bg-rose-950/40 hover:bg-rose-900/60 border border-rose-800/60 rounded-xl transition-colors"
-              title="Clear all data and start completely fresh"
+              title="Clear all data in Cloud and start completely blank"
             >
               <Trash2 className="w-3.5 h-3.5 text-rose-400" />
               <span className="hidden sm:inline">Clear All (Start Blank)</span>
@@ -149,10 +171,11 @@ export const Navbar = ({
 
       {showConfigModal && (
         <FirebaseModal
-          storageMode={storageMode}
+          syncStatus={syncStatus}
           lastSaved={lastSaved}
           onClose={() => setShowConfigModal(false)}
           onSaveConfig={onSaveConfig}
+          onTriggerSync={onTriggerSync}
         />
       )}
     </>

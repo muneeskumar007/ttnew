@@ -1,9 +1,7 @@
-// Firebase Client configured for Project hyoid-f67d0 with LocalStorage Persistence Fallback
+// Pure Online Firebase Cloud Firestore Client
+// 100% Online Database Persistence for Project: hyoid-f67d0
+// Strictly NO LocalStorage or Local Database used.
 
-const LOCAL_STORAGE_KEY = 'college_timetable_generator_clean_v2';
-const FIREBASE_CONFIG_KEY = 'college_timetable_firebase_config_v1';
-
-// User's Firebase Web Configuration for Project: hyoid-f67d0
 export const DEFAULT_FIREBASE_CONFIG = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBmff-MIHbbKTC6zSVuTrsp3FY0t-CWB8k",
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "hyoid-f67d0.firebaseapp.com",
@@ -13,41 +11,103 @@ export const DEFAULT_FIREBASE_CONFIG = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:794370439907:web:f6e4afed129d5dcc69e3d6"
 };
 
-export const getSavedFirebaseConfig = () => {
-  try {
-    const saved = localStorage.getItem(FIREBASE_CONFIG_KEY);
-    if (saved) return JSON.parse(saved);
-  } catch (e) {
-    console.warn('Failed to load custom Firebase config:', e);
-  }
-  return DEFAULT_FIREBASE_CONFIG;
+let activeFirebaseConfig = { ...DEFAULT_FIREBASE_CONFIG };
+
+export const getFirebaseConfig = () => {
+  return activeFirebaseConfig;
 };
 
-export const saveFirebaseConfig = (config) => {
+export const updateFirebaseConfig = (newConfig) => {
+  activeFirebaseConfig = { ...activeFirebaseConfig, ...newConfig };
+};
+
+const getFirestoreDocumentUrl = (config) => {
+  const projectId = config.projectId || DEFAULT_FIREBASE_CONFIG.projectId;
+  const apiKey = config.apiKey || DEFAULT_FIREBASE_CONFIG.apiKey;
+  return `https://firestore.googleapis.com/v1/projects/${projectId}/databases/(default)/documents/timetable_workspaces/default_workspace?key=${apiKey}`;
+};
+
+/**
+ * Checks the live online connection status with Google Cloud Firestore.
+ */
+export const checkFirebaseStatus = async () => {
+  const config = getFirebaseConfig();
+  if (!config.projectId || !config.apiKey) {
+    return {
+      ok: false,
+      status: 'missing_config',
+      message: 'Firebase Project ID or API Key missing.'
+    };
+  }
+
+  const url = getFirestoreDocumentUrl(config);
+
   try {
-    localStorage.setItem(FIREBASE_CONFIG_KEY, JSON.stringify(config));
-  } catch (e) {
-    console.error('Error saving firebase config:', e);
+    const res = await fetch(url, { method: 'GET' });
+
+    if (res.ok) {
+      return {
+        ok: true,
+        status: 'connected',
+        message: 'Online Cloud Firestore Connected & Synced'
+      };
+    }
+
+    if (res.status === 404) {
+      // Document does not exist yet, but database is reachable and ready!
+      return {
+        ok: true,
+        status: 'connected_empty',
+        message: 'Online Cloud Firestore Connected (Ready for new data)'
+      };
+    }
+
+    const errJson = await res.json().catch(() => ({}));
+    const errMessage = errJson.error?.message || `HTTP ${res.status}`;
+
+    if (errMessage.includes('has not been used') || errMessage.includes('disabled') || errMessage.includes('SERVICE_DISABLED')) {
+      return {
+        ok: false,
+        status: 'firestore_not_created',
+        message: 'Cloud Firestore is not activated yet for this Firebase project.',
+        consoleUrl: `https://console.firebase.google.com/project/${config.projectId}/firestore`,
+        details: 'Go to Firebase Console -> Build -> Firestore Database -> Click "Create Database" (select Start in test mode).'
+      };
+    }
+
+    if (errMessage.includes('Missing or insufficient permissions') || res.status === 403) {
+      return {
+        ok: false,
+        status: 'rules_blocked',
+        message: 'Firestore security rules are blocking access.',
+        consoleUrl: `https://console.firebase.google.com/project/${config.projectId}/firestore/rules`,
+        details: 'In Firebase Console -> Firestore -> Rules tab, allow read and write in test mode.'
+      };
+    }
+
+    return {
+      ok: false,
+      status: 'error',
+      message: `Firebase Firestore error: ${errMessage}`
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      status: 'network_error',
+      message: `Network error connecting to Firebase: ${err.message}`
+    };
   }
 };
 
-// Save state to LocalStorage and Firebase Firestore
+/**
+ * Persists the entire state directly to Firebase Cloud Firestore.
+ * Strictly 100% online cloud persistence. No local storage used.
+ */
 export const persistState = async (state) => {
-  // 1. Instant zero-latency LocalStorage persistence
-  try {
-    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(state));
-  } catch (e) {
-    console.error('LocalStorage save error:', e);
-  }
-
-  // 2. Synchronize to Firebase Firestore
-  const config = getSavedFirebaseConfig();
-  if (!config || !config.projectId) {
-    return { success: true, mode: 'local' };
-  }
+  const config = getFirebaseConfig();
+  const url = getFirestoreDocumentUrl(config);
 
   try {
-    const url = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/timetable_workspaces/default_workspace?key=${config.apiKey || ''}`;
     const payload = {
       fields: {
         payloadJson: { stringValue: JSON.stringify(state) },
@@ -63,56 +123,113 @@ export const persistState = async (state) => {
     });
 
     if (res.ok) {
-      return { success: true, mode: 'firebase' };
-    } else {
-      const errJson = await res.json().catch(() => ({}));
-      const errMsg = errJson.error?.message || `HTTP ${res.status}`;
-      return { success: true, mode: 'local', warning: errMsg };
+      const now = new Date().toISOString();
+      return {
+        success: true,
+        status: 'synced',
+        lastUpdated: now,
+        message: 'Saved directly to Firebase Cloud Firestore'
+      };
+    }
+
+    const errJson = await res.json().catch(() => ({}));
+    const errMsg = errJson.error?.message || `HTTP ${res.status}`;
+
+    return {
+      success: false,
+      status: 'error',
+      error: errMsg,
+      isSetupRequired: errMsg.includes('disabled') || errMsg.includes('has not been used')
+    };
+  } catch (err) {
+    return {
+      success: false,
+      status: 'network_error',
+      error: err.message
+    };
+  }
+};
+
+/**
+ * Loads persisted timetable data strictly from Firebase Cloud Firestore online.
+ * NO LocalStorage read or fallback.
+ */
+export const loadPersistedState = async () => {
+  const config = getFirebaseConfig();
+  const url = getFirestoreDocumentUrl(config);
+
+  try {
+    const res = await fetch(url, { method: 'GET' });
+
+    if (res.ok) {
+      const json = await res.json();
+      if (json.fields?.payloadJson?.stringValue) {
+        const parsed = JSON.parse(json.fields.payloadJson.stringValue);
+        return {
+          data: parsed,
+          status: 'synced',
+          lastUpdated: json.fields?.lastUpdated?.stringValue || new Date().toISOString(),
+          message: 'Loaded from Firebase Cloud Firestore'
+        };
+      }
+      return {
+        data: null,
+        status: 'empty',
+        message: 'Workspace document is empty in Firebase.'
+      };
+    }
+
+    if (res.status === 404) {
+      // Normal empty state when starting completely fresh
+      return {
+        data: null,
+        status: 'empty',
+        message: 'No timetable document exists in Firebase yet. Ready for manual input.'
+      };
+    }
+
+    const errJson = await res.json().catch(() => ({}));
+    const errMsg = errJson.error?.message || `HTTP ${res.status}`;
+
+    return {
+      data: null,
+      status: 'error',
+      error: errMsg,
+      isSetupRequired: errMsg.includes('disabled') || errMsg.includes('has not been used')
+    };
+  } catch (err) {
+    return {
+      data: null,
+      status: 'network_error',
+      error: err.message
+    };
+  }
+};
+
+/**
+ * Clears or deletes the workspace document directly in Firebase Cloud Firestore online.
+ */
+export const clearPersistedState = async () => {
+  const config = getFirebaseConfig();
+  const url = getFirestoreDocumentUrl(config);
+
+  try {
+    const res = await fetch(url, { method: 'DELETE' });
+    if (res.ok || res.status === 404) {
+      return { success: true, message: 'Cleared online Firebase Firestore workspace.' };
     }
   } catch (err) {
-    return { success: true, mode: 'local', warning: err.message };
-  }
-};
-
-// Load state with priority: Firebase Firestore -> LocalStorage
-export const loadPersistedState = async () => {
-  const config = getSavedFirebaseConfig();
-
-  // Try Firebase Firestore
-  if (config && config.projectId) {
-    try {
-      const url = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/timetable_workspaces/default_workspace?key=${config.apiKey || ''}`;
-      const res = await fetch(url);
-      if (res.ok) {
-        const json = await res.json();
-        if (json.fields?.payloadJson?.stringValue) {
-          const parsed = JSON.parse(json.fields.payloadJson.stringValue);
-          localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(parsed));
-          return { data: parsed, source: 'firebase' };
-        }
-      }
-    } catch (err) {
-      console.warn('Firebase Firestore load error, using local storage cache:', err.message);
-    }
+    console.error('Error clearing Firebase Firestore document:', err);
   }
 
-  // Fallback to LocalStorage
-  try {
-    const local = localStorage.getItem(LOCAL_STORAGE_KEY);
-    if (local) {
-      return { data: JSON.parse(local), source: 'local' };
-    }
-  } catch (e) {
-    console.error('Failed reading local storage:', e);
-  }
-
-  return { data: null, source: 'none' };
-};
-
-export const clearPersistedState = () => {
-  try {
-    localStorage.removeItem(LOCAL_STORAGE_KEY);
-  } catch (e) {
-    console.error('Error clearing local storage:', e);
-  }
+  // Also overwrite with clean empty workspace in Firebase
+  return persistState({
+    department: 'Engineering & Technology',
+    faculty: [],
+    subjects: [],
+    sections: [],
+    allocations: {},
+    prefixedSlots: {},
+    timetables: {}
+  });
 };

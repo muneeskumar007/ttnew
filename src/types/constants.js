@@ -62,3 +62,36 @@ export const STEP_NAMES = [
   { id: 9, key: 'free-faculty', label: '9. Free Faculty', desc: 'Substitution & Free Hours' },
   { id: 10, key: 'export', label: '10. Export', desc: 'Excel (.xlsx) & PDF Reports' },
 ];
+
+/**
+ * Generates clean subject acronyms from subject names:
+ * E.g. "Data Structures" -> "DS"
+ * E.g. "Object Oriented Programming" -> "OOP"
+ * E.g. "Operating Systems" -> "OS"
+ * E.g. "Discrete Mathematics" -> "DM"
+ */
+export const getSubjectAcronym = (name, code = '') => {
+  if (!name) return code || '';
+  const trimmed = name.trim();
+  if (trimmed.length <= 4 && !trimmed.includes(' ')) return trimmed;
+
+  const isLab = /\b(lab|laboratory)\b/i.test(trimmed);
+  const cleanName = trimmed.replace(/\b(laboratory|lab)\b/gi, '').trim();
+
+  const stopWords = new Set(['and', 'with', 'of', 'in', 'for', 'the', 'to', 'on', 'at', 'by', 'a', 'an', '&']);
+  const words = cleanName
+    .replace(/[&/\\#,+()$~%.'":*?<>{}]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean);
+
+  if (words.length === 0) return isLab ? 'LAB' : code;
+  if (words.length === 1) {
+    const single = words[0].length <= 4 ? words[0].toUpperCase() : words[0].slice(0, 3).toUpperCase();
+    return isLab ? `${single} LAB` : single;
+  }
+
+  const significantWords = words.filter((w) => !stopWords.has(w.toLowerCase()));
+  const targetWords = significantWords.length >= 2 ? significantWords : words;
+  const acronym = targetWords.map((w) => w[0].toUpperCase()).join('');
+  return isLab ? `${acronym} LAB` : acronym;
+};

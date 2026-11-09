@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { DAYS, DAY_PERIODS, PERIOD_TIMINGS } from '../types/constants';
+import { DAYS, DAY_PERIODS, PERIOD_TIMINGS, getSubjectAcronym } from '../types/constants';
 
 // Format cell text
 const getSlotDisplay = (slot, facultyMap, subjectsMap) => {
@@ -10,7 +10,8 @@ const getSlotDisplay = (slot, facultyMap, subjectsMap) => {
     .join(' & ');
   const typeTag = slot.type === 'lab' ? '[LAB]' : '[TH]';
   const lockTag = slot.isLocked ? (slot.isTutorHour ? '[TUTOR]' : '[LOCKED]') : '';
-  return `${slot.subjectCode} ${typeTag}\n${sub?.name || ''}\nFac: ${facNames || 'N/A'}${lockTag ? ' ' + lockTag : ''}`;
+  const acronym = getSubjectAcronym(sub?.name || slot.subjectName || slot.subjectCode, slot.subjectCode);
+  return `${slot.subjectCode} (${acronym}) ${typeTag}\nFac: ${facNames || 'N/A'}${lockTag ? ' ' + lockTag : ''}`;
 };
 
 // 1. Export Single Section Timetable to Excel

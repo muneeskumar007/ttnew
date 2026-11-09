@@ -14,7 +14,7 @@ import {
   ShieldCheck,
   Beaker
 } from 'lucide-react';
-import { DAYS, DAY_PERIODS, PERIOD_TIMINGS, TOTAL_WEEKLY_PERIODS, SUBJECT_PALETTES } from '../../types/constants';
+import { DAYS, DAY_PERIODS, PERIOD_TIMINGS, TOTAL_WEEKLY_PERIODS, SUBJECT_PALETTES, getSubjectAcronym } from '../../types/constants';
 import { computeSectionTally, isFacultyBusy } from '../../services/scheduler';
 
 export const PrefixingStep = ({
@@ -407,8 +407,11 @@ export const PrefixingStep = ({
                                   LOCKED
                                 </span>
                               </div>
-                              <div className="text-[10px] text-slate-600 truncate mt-0.5">
-                                {sub?.name}
+                              <div
+                                className="font-extrabold text-xs text-slate-800 mt-0.5"
+                                title={sub?.name || slot.subjectCode}
+                              >
+                                {getSubjectAcronym(sub?.name, slot.subjectCode)}
                               </div>
                               <div className="flex items-center justify-between mt-1 text-[10px]">
                                 <span className="font-semibold text-rose-800">

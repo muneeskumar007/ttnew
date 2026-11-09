@@ -1,4 +1,4 @@
-import { SUBJECT_PALETTES } from '../types/constants';
+import { SUBJECT_PALETTES } from '../types/constants.js';
 
 // Clean initial empty slate so the user puts everything manually!
 export const INITIAL_DEPARTMENT = 'Computer Science & Engineering';

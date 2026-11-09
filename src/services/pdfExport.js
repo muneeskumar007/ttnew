@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { DAYS, DAY_PERIODS } from '../types/constants';
+import { DAYS, DAY_PERIODS, getSubjectAcronym } from '../types/constants';
 
 export const exportSectionToPdf = (section, timetable, subjects, faculty) => {
   const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
@@ -44,9 +44,11 @@ export const exportSectionToPdf = (section, timetable, subjects, faculty) => {
     for (let p = 1; p <= 4; p++) {
       const slot = dayGrid[p];
       if (slot && slot.subjectCode) {
+        const sub = subjectsMap[slot.subjectCode];
+        const acronym = getSubjectAcronym(sub?.name || slot.subjectName || slot.subjectCode, slot.subjectCode);
         const facs = (slot.facultyIds || []).map((id) => facultyMap[id]?.name || id).join(', ');
         const tag = slot.type === 'lab' ? '[LAB]' : '[TH]';
-        row.push(`${slot.subjectCode} ${tag}\n${facs}`);
+        row.push(`${slot.subjectCode} (${acronym})\n${facs}`);
       } else {
         row.push('---');
       }

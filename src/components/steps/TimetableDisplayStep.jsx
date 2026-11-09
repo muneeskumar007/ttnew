@@ -13,7 +13,7 @@ import {
   ArrowLeftRight,
   Printer
 } from 'lucide-react';
-import { DAYS, DAY_PERIODS, PERIOD_TIMINGS, SUBJECT_PALETTES } from '../../types/constants';
+import { DAYS, DAY_PERIODS, PERIOD_TIMINGS, SUBJECT_PALETTES, getSubjectAcronym } from '../../types/constants';
 import { validateSwap } from '../../services/scheduler';
 
 export const TimetableDisplayStep = ({
@@ -535,8 +535,13 @@ const SlotBox = ({
           </div>
         </div>
 
-        <div className="text-[11px] font-medium text-slate-800 line-clamp-1 mt-1 leading-snug">
-          {sub?.name || slot.subjectCode}
+        <div className="my-1">
+          <div
+            className="font-black text-sm tracking-tight text-slate-900 group-hover:text-indigo-900 transition-colors"
+            title={`${slot.subjectCode}: ${sub?.name || slot.subjectCode}`}
+          >
+            {getSubjectAcronym(sub?.name || slot.subjectName || slot.subjectCode, slot.subjectCode)}
+          </div>
         </div>
       </div>
 

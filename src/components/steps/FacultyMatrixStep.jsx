@@ -10,7 +10,7 @@ import {
   Building2,
   Calendar
 } from 'lucide-react';
-import { DAYS, DAY_PERIODS, SUBJECT_PALETTES } from '../../types/constants';
+import { DAYS, DAY_PERIODS, SUBJECT_PALETTES, getSubjectAcronym } from '../../types/constants';
 
 export const FacultyMatrixStep = ({
   faculty,
@@ -347,7 +347,9 @@ const FacultySlotCell = ({ commitments }) => {
             <div className="text-[11px] font-semibold text-slate-800 truncate mt-0.5">
               {c.sectionName}
             </div>
-            <div className="text-[10px] text-slate-500 truncate">{c.subjectName}</div>
+            <div className="text-[10px] font-bold text-slate-600 truncate" title={c.subjectName}>
+              {getSubjectAcronym(c.subjectName, c.subjectCode)}
+            </div>
           </div>
         );
       })}
