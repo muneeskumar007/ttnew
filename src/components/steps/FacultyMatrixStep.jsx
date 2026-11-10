@@ -8,9 +8,13 @@ import {
   Clock, 
   Download,
   Building2,
-  Calendar
+  Calendar,
+  FileText,
+  FileSpreadsheet
 } from 'lucide-react';
 import { DAYS, DAY_PERIODS, SUBJECT_PALETTES, getSubjectAcronym } from '../../types/constants';
+import { exportSelectedFacultyTimetableToPdf } from '../../services/pdfExport';
+import { exportSelectedFacultyTimetableToExcel } from '../../services/excelExport';
 
 export const FacultyMatrixStep = ({
   faculty,
@@ -98,8 +102,8 @@ export const FacultyMatrixStep = ({
           </p>
         </div>
 
-        {/* Faculty Selector Dropdown */}
-        <div className="flex items-center gap-3">
+        {/* Faculty Selector & Quick Export */}
+        <div className="flex items-center gap-2.5 flex-wrap">
           <label className="text-xs font-semibold text-slate-600">Select Faculty:</label>
           <select
             value={selectedFacultyId}
@@ -112,6 +116,16 @@ export const FacultyMatrixStep = ({
               </option>
             ))}
           </select>
+          {activeFaculty && (
+            <button
+              onClick={() => exportSelectedFacultyTimetableToPdf(activeFaculty, timetables, subjects, sections)}
+              className="flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-200 transition-all hover:scale-[1.02]"
+              title={`Export ${activeFaculty.name}'s Timetable to PDF`}
+            >
+              <FileText className="w-4 h-4" />
+              <span>Export PDF</span>
+            </button>
+          )}
         </div>
       </div>
 
@@ -194,6 +208,26 @@ export const FacultyMatrixStep = ({
                 <span className="font-bold">{totalCollisions} Clashes Detected!</span>
               </>
             )}
+          </div>
+
+          {/* Export PDF & Excel for Selected Faculty */}
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => exportSelectedFacultyTimetableToPdf(activeFaculty, timetables, subjects, sections)}
+              className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-200 transition-all hover:scale-[1.02]"
+              title={`Export ${activeFaculty?.name}'s Timetable to PDF`}
+            >
+              <FileText className="w-4 h-4" />
+              <span>Export PDF</span>
+            </button>
+            <button
+              onClick={() => exportSelectedFacultyTimetableToExcel(activeFaculty, timetables, subjects, sections)}
+              className="flex items-center gap-1.5 px-3 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold border border-emerald-200 transition-colors"
+              title={`Export ${activeFaculty?.name}'s Timetable to Excel`}
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+              <span>Excel</span>
+            </button>
           </div>
         </div>
       </div>

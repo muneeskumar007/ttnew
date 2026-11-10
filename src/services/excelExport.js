@@ -200,3 +200,87 @@ export const exportFreeFacultyReportToExcel = (day, period, freeFaculty, busyFac
   XLSX.utils.book_append_sheet(wb, ws, 'Free Faculty Report');
   XLSX.writeFile(wb, `Free_Faculty_${day}_P${period}.xlsx`);
 };
+
+// 5. Export Selected Faculty Individual Timetable to Excel (.xlsx)
+export const exportSelectedFacultyTimetableToExcel = (facultyMember, timetables, subjects, sections) => {
+  if (!facultyMember) return;
+  const subjectsMap = Object.fromEntries(subjects.map((s) => [s.code, s]));
+  const sectionsMap = Object.fromEntries(sections.map((s) => [s.id, s]));
+
+  const headers = ['Day', 'P1 (09:00-09:50)', 'P2 (09:50-10:40)', 'P3 (10:55-11:45)', 'P4 (11:45-12:35)', 'LUNCH (12:35-01:25)', 'P5 (01:25-02:15)', 'P6 (02:15-03:05)', 'P7 (03:05-03:55)'];
+
+  let internalHours = 0;
+  const externalHours = facultyMember.lockedSlots?.length || 0;
+
+  const rows = [
+    [`FACULTY INDIVIDUAL TIMETABLE - ${facultyMember.name.toUpperCase()}`],
+    [`ID: ${facultyMember.id} | Department: ${facultyMember.department} | Role: ${facultyMember.designation || 'Faculty'}`],
+    [`Max Allowed: ${facultyMember.maxHours || 20} hrs/week | Exported: ${new Date().toLocaleDateString()}`],
+    [],
+    headers,
+  ];
+
+  DAYS.forEach((day) => {
+    const row = [day];
+
+    const getCell = (p) => {
+      const parts = [];
+      if (facultyMember.lockedSlots) {
+        const ext = facultyMember.lockedSlots.find(
+          (ls) => ls.day === day && Number(ls.period) === Number(p)
+        );
+        if (ext) {
+          parts.push(`[LOCKED ${ext.dept}]`);
+        }
+      }
+
+      Object.entries(timetables).forEach(([secId, secGrid]) => {
+        const slot = secGrid[day]?.[p];
+        if (slot && slot.facultyIds && slot.facultyIds.includes(facultyMember.id)) {
+          internalHours++;
+          const sub = subjectsMap[slot.subjectCode];
+          const acronym = getSubjectAcronym(sub?.name || slot.subjectName || slot.subjectCode, slot.subjectCode);
+          const secName = sectionsMap[secId]?.name || secId;
+          const tag = slot.type === 'lab' ? '[LAB]' : '[TH]';
+          parts.push(`${slot.subjectCode} (${acronym}) ${tag} - ${secName}`);
+        }
+      });
+
+      if (parts.length === 0) return 'FREE';
+      return parts.join(' | ');
+    };
+
+    for (let p = 1; p <= 4; p++) {
+      row.push(getCell(p));
+    }
+
+    row.push('LUNCH BREAK');
+
+    if (day === 'Saturday') {
+      row.push('INACTIVE (HALF DAY)', 'INACTIVE (HALF DAY)', 'INACTIVE (HALF DAY)');
+    } else {
+      for (let p = 5; p <= 7; p++) {
+        row.push(getCell(p));
+      }
+    }
+
+    rows.push(row);
+  });
+
+  const ws = XLSX.utils.aoa_to_sheet(rows);
+  ws['!cols'] = [
+    { wch: 14 },
+    { wch: 28 },
+    { wch: 28 },
+    { wch: 28 },
+    { wch: 28 },
+    { wch: 16 },
+    { wch: 28 },
+    { wch: 28 },
+    { wch: 28 },
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, `${facultyMember.name.slice(0, 20)} Timetable`);
+  XLSX.writeFile(wb, `${facultyMember.name.replace(/\s+/g, '_')}_Timetable.xlsx`);
+};

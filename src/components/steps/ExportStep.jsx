@@ -8,18 +8,21 @@ import {
   Layers, 
   Users, 
   Search,
-  Sparkles
+  Sparkles,
+  UserCheck
 } from 'lucide-react';
 import { 
   exportSectionToExcel, 
   exportMasterGridToExcel, 
   exportFacultyWorkloadToExcel, 
-  exportFreeFacultyReportToExcel 
+  exportFreeFacultyReportToExcel,
+  exportSelectedFacultyTimetableToExcel 
 } from '../../services/excelExport';
 import { 
   exportSectionToPdf, 
   exportFacultyWorkloadToPdf, 
-  exportFreeFacultyToPdf 
+  exportFreeFacultyToPdf,
+  exportSelectedFacultyTimetableToPdf 
 } from '../../services/pdfExport';
 import { DAYS, DAY_PERIODS } from '../../types/constants';
 
@@ -31,11 +34,13 @@ export const ExportStep = ({
   setActiveStep,
 }) => {
   const [selectedSectionId, setSelectedSectionId] = useState(sections[0]?.id || '');
+  const [selectedFacultyId, setSelectedFacultyId] = useState(faculty[0]?.id || '');
   const [reportDay, setReportDay] = useState('Monday');
   const [reportPeriod, setReportPeriod] = useState(2);
 
   const activeSection = sections.find((s) => s.id === selectedSectionId) || sections[0];
   const activeTimetable = timetables[activeSection?.id] || {};
+  const activeFaculty = faculty.find((f) => f.id === selectedFacultyId) || faculty[0];
 
   // Export handlers
   const handleExportSectionExcel = () => {
@@ -48,6 +53,18 @@ export const ExportStep = ({
 
   const handleExportMasterExcel = () => {
     exportMasterGridToExcel(sections, timetables, subjects, faculty);
+  };
+
+  const handleExportSelectedFacultyPdf = () => {
+    if (activeFaculty) {
+      exportSelectedFacultyTimetableToPdf(activeFaculty, timetables, subjects, sections);
+    }
+  };
+
+  const handleExportSelectedFacultyExcel = () => {
+    if (activeFaculty) {
+      exportSelectedFacultyTimetableToExcel(activeFaculty, timetables, subjects, sections);
+    }
   };
 
   const handleExportFacultyExcel = () => {
@@ -242,6 +259,55 @@ export const ExportStep = ({
             >
               <FileSpreadsheet className="w-4 h-4" />
               <span>Export All Sections Master Excel (.xlsx)</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Card 3: Selected Faculty Timetable Export */}
+        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between space-y-4">
+          <div>
+            <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 mb-3">
+              <UserCheck className="w-5 h-5" />
+            </div>
+            <h3 className="text-base font-bold text-slate-900">
+              Selected Faculty Timetable (PDF / Excel)
+            </h3>
+            <p className="text-xs text-slate-500 mt-1">
+              Personalized weekly teaching box schedule for any selected teacher with allocated classes, subjects, external locked hours, and official signature blocks.
+            </p>
+
+            <div className="mt-4">
+              <label className="block text-xs font-semibold text-slate-600 mb-1">
+                Choose Faculty Member:
+              </label>
+              <select
+                value={selectedFacultyId}
+                onChange={(e) => setSelectedFacultyId(e.target.value)}
+                className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800"
+              >
+                {faculty.map((f) => (
+                  <option key={f.id} value={f.id}>
+                    {f.name} ({f.department}) - {f.designation || 'Faculty'}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 pt-2">
+            <button
+              onClick={handleExportSelectedFacultyExcel}
+              className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold border border-emerald-200 transition-colors"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
+              <span>Export Excel</span>
+            </button>
+            <button
+              onClick={handleExportSelectedFacultyPdf}
+              className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-200 transition-colors"
+            >
+              <FileText className="w-4 h-4" />
+              <span>Export Faculty PDF</span>
             </button>
           </div>
         </div>
