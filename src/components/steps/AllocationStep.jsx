@@ -9,7 +9,9 @@ import {
   Clock, 
   Plus, 
   X,
-  Lock
+  Lock,
+  Maximize2,
+  Minimize2
 } from 'lucide-react';
 import { SUBJECT_PALETTES } from '../../types/constants';
 
@@ -22,6 +24,7 @@ export const AllocationStep = ({
   setActiveStep,
 }) => {
   const [selectedSectionId, setSelectedSectionId] = useState(sections[0]?.id || '');
+  const [isExpandedView, setIsExpandedView] = useState(false);
 
   const activeSection = sections.find((s) => s.id === selectedSectionId) || sections[0];
   const sectionAlloc = (activeSection && allocations[activeSection.id]) || {};
@@ -202,7 +205,7 @@ export const AllocationStep = ({
         </div>
       ) : (
       /* Main Grid: Subject Mapping (Left) & Real-time Workload Meter (Right) */
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
         {/* Left: Allocation Cards for Active Section */}
         <div className="lg:col-span-2 space-y-4">
           <div className="flex items-center justify-between">
@@ -346,16 +349,59 @@ export const AllocationStep = ({
         </div>
 
         {/* Right: Real-time Faculty Workload Meter */}
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-sm font-bold text-slate-900 flex items-center gap-2">
-              <Clock className="w-4 h-4 text-indigo-600" />
-              <span>Real-Time Workload Meter</span>
-            </h3>
-            <span className="text-[11px] text-slate-400">Department + Other Load</span>
+        <div
+          className={`lg:col-span-1 ${
+            isExpandedView
+              ? 'space-y-4'
+              : 'lg:sticky lg:top-[7.5rem] lg:self-start flex flex-col space-y-3 lg:h-[calc(100vh-8.5rem)] lg:min-h-[520px]'
+          }`}
+        >
+          <div className="flex items-center justify-between shrink-0">
+            <div className="flex items-center gap-2">
+              <Clock className="w-4 h-4 text-indigo-600 shrink-0" />
+              <h3 className="text-sm font-bold text-slate-900">
+                Real-Time Workload Meter
+              </h3>
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
+                {faculty.length}
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-[11px] text-slate-400 hidden xl:inline">
+                Department + Other Load
+              </span>
+              <button
+                type="button"
+                onClick={() => setIsExpandedView(!isExpandedView)}
+                title={
+                  isExpandedView
+                    ? 'Switch to Sticky Full-Height Scrollable View'
+                    : 'Expand All Faculty (Match Left Side Full Length)'
+                }
+                className="inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[11px] font-medium text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-200 transition-colors"
+              >
+                {isExpandedView ? (
+                  <>
+                    <Minimize2 className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Sticky View</span>
+                  </>
+                ) : (
+                  <>
+                    <Maximize2 className="w-3.5 h-3.5 text-indigo-600" />
+                    <span>Full Length</span>
+                  </>
+                )}
+              </button>
+            </div>
           </div>
 
-          <div className="bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-4 max-h-[750px] overflow-y-auto">
+          <div
+            className={`bg-white rounded-2xl border border-slate-200 p-4 shadow-xs space-y-4 ${
+              isExpandedView
+                ? ''
+                : 'flex-1 min-h-0 overflow-y-auto max-h-[500px] lg:max-h-none pr-1.5'
+            }`}
+          >
             {faculty.map((f) => {
               const wl = facultyWorkload[f.id] || { internalHours: 0, externalHours: 0 };
               const totalLoad = wl.internalHours + wl.externalHours;
