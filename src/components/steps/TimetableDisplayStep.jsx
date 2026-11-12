@@ -137,63 +137,74 @@ export const TimetableDisplayStep = ({
   return (
     <div className="space-y-6">
       {/* Top Banner */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4 no-print">
-        <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold text-slate-900">
-              Colorful Timetable Display & Interactive Drag-and-Swap
-            </h2>
-            <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200">
-              Live Interactive Grid
-            </span>
+      <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4 no-print">
+        {/* Row 1: Title, Live Badge, Subtitle & Action Controls (Undo / Print) */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+          <div className="space-y-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
+                Colorful Timetable Display & Interactive Drag-and-Swap
+              </h2>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200 shrink-0">
+                Live Interactive Grid
+              </span>
+            </div>
+            <p className="text-xs text-slate-500">
+              Same-subject matching 2px solid colored outlines, Gold Halo for Tutor hour, and Hard Collision Guard protection.
+            </p>
           </div>
-          <p className="text-xs text-slate-500 mt-1">
-            Same-subject matching 2px solid colored outlines, Gold Halo for Tutor hour, and Hard Collision Guard protection.
-          </p>
-        </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          {/* Section Switcher Tabs */}
-          <div className="flex items-center gap-1.5 overflow-x-auto">
-            {sections.map((sec) => (
+          {/* Action Buttons: Undo & Print */}
+          <div className="flex items-center gap-2 shrink-0 self-start md:self-auto">
+            {history.length > 0 && (
               <button
-                key={sec.id}
-                onClick={() => {
-                  setSelectedSectionId(sec.id);
-                  setSelectedSlotForSwap(null);
-                }}
-                className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                  activeSection?.id === sec.id
-                    ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100'
-                    : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                }`}
+                onClick={handleUndo}
+                className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
+                title="Undo last swap"
               >
-                {sec.name}
+                <RotateCcw className="w-3.5 h-3.5" />
+                <span>Undo Swap ({history.length})</span>
               </button>
-            ))}
-          </div>
+            )}
 
-          {/* Undo Button */}
-          {history.length > 0 && (
             <button
-              onClick={handleUndo}
-              className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
-              title="Undo last swap"
+              onClick={() => window.print()}
+              className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200/80 rounded-xl transition-colors shadow-xs"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Undo Swap ({history.length})</span>
+              <Printer className="w-3.5 h-3.5 text-indigo-600" />
+              <span>Print View</span>
             </button>
-          )}
-
-          {/* Native Print button */}
-          <button
-            onClick={() => window.print()}
-            className="flex items-center gap-1.5 px-3 py-2 text-xs font-semibold text-slate-700 bg-slate-100 hover:bg-slate-200 rounded-xl transition-colors"
-          >
-            <Printer className="w-3.5 h-3.5" />
-            <span>Print View</span>
-          </button>
+          </div>
         </div>
+
+        {/* Row 2: Section Switcher Toolbar */}
+        {sections.length > 0 && (
+          <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 shrink-0">
+              <Layers className="w-4 h-4 text-indigo-600" />
+              <span>Class Sections:</span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5 flex-1">
+              {sections.map((sec) => (
+                <button
+                  key={sec.id}
+                  onClick={() => {
+                    setSelectedSectionId(sec.id);
+                    setSelectedSlotForSwap(null);
+                  }}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                    activeSection?.id === sec.id
+                      ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200 ring-2 ring-indigo-600/20'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200 hover:text-slate-900'
+                  }`}
+                >
+                  {sec.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Real-time Swap Alert Bar */}

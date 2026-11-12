@@ -12,7 +12,8 @@ import {
   Sparkles,
   Info,
   ShieldCheck,
-  Beaker
+  Beaker,
+  Layers
 } from 'lucide-react';
 import { DAYS, DAY_PERIODS, PERIOD_TIMINGS, TOTAL_WEEKLY_PERIODS, SUBJECT_PALETTES, getSubjectAcronym } from '../../types/constants';
 import { computeSectionTally, isFacultyBusy } from '../../services/scheduler';
@@ -190,10 +191,10 @@ export const PrefixingStep = ({
   return (
     <div className="space-y-6">
       {/* Top Banner */}
-      <div className="bg-white rounded-2xl p-6 border border-slate-200 shadow-xs flex flex-col md:flex-row md:items-center justify-between gap-4">
+      <div className="bg-white rounded-2xl p-5 sm:p-6 border border-slate-200 shadow-xs space-y-4">
         <div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-xl font-bold text-slate-900">
+          <div className="flex flex-wrap items-center gap-2">
+            <h2 className="text-lg sm:text-xl font-bold text-slate-900 tracking-tight">
               Schedule Grid, Prefixing & Live Tally Engine
             </h2>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
@@ -206,21 +207,30 @@ export const PrefixingStep = ({
         </div>
 
         {/* Section Switcher Tabs */}
-        <div className="flex items-center gap-2 overflow-x-auto pb-1">
-          {sections.map((sec) => (
-            <button
-              key={sec.id}
-              onClick={() => setSelectedSectionId(sec.id)}
-              className={`px-3.5 py-2 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
-                activeSection?.id === sec.id
-                  ? 'bg-indigo-600 text-white shadow-md shadow-indigo-100'
-                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-              }`}
-            >
-              {sec.name}
-            </button>
-          ))}
-        </div>
+        {sections.length > 0 && (
+          <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 shrink-0">
+              <Layers className="w-4 h-4 text-indigo-600" />
+              <span>Class Sections:</span>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-1.5 flex-1">
+              {sections.map((sec) => (
+                <button
+                  key={sec.id}
+                  onClick={() => setSelectedSectionId(sec.id)}
+                  className={`px-3 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition-all ${
+                    activeSection?.id === sec.id
+                      ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-200 ring-2 ring-indigo-600/20'
+                      : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                  }`}
+                >
+                  {sec.name}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {!activeSection ? (
