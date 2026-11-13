@@ -284,3 +284,100 @@ export const exportSelectedFacultyTimetableToExcel = (facultyMember, timetables,
   XLSX.utils.book_append_sheet(wb, ws, `${facultyMember.name.slice(0, 20)} Timetable`);
   XLSX.writeFile(wb, `${facultyMember.name.replace(/\s+/g, '_')}_Timetable.xlsx`);
 };
+
+// 6. Export All Faculty Timetables to Multi-Sheet Excel Workbook (.xlsx)
+export const exportAllFacultyToExcel = (faculty, timetables, subjects, sections) => {
+  if (!faculty || faculty.length === 0) return;
+  const subjectsMap = Object.fromEntries(subjects.map((s) => [s.code, s]));
+  const sectionsMap = Object.fromEntries(sections.map((s) => [s.id, s]));
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1: Summary
+  const summaryRows = [
+    ['FACULTY ALLOCATIONS & LOAD SUMMARY'],
+    ['Generated on: ' + new Date().toLocaleDateString()],
+    [],
+    ['Faculty ID', 'Faculty Name', 'Department', 'Designation', 'Max Hours', 'Internal Dept Hours', 'Other Dept Hours', 'Total Load Hours', 'Status'],
+  ];
+
+  faculty.forEach((fac) => {
+    let deptHours = 0;
+    Object.values(timetables).forEach((secGrid) => {
+      DAYS.forEach((d) => {
+        const maxP = DAY_PERIODS[d];
+        for (let p = 1; p <= maxP; p++) {
+          const slot = secGrid[d]?.[p];
+          if (slot && slot.facultyIds && slot.facultyIds.includes(fac.id)) {
+            deptHours++;
+          }
+        }
+      });
+    });
+    const externalHours = fac.lockedSlots?.length || 0;
+    const totalLoad = deptHours + externalHours;
+    const status = totalLoad > fac.maxHours ? 'OVERLOAD' : totalLoad === fac.maxHours ? 'OPTIMAL' : 'AVAILABLE';
+
+    summaryRows.push([
+      fac.id,
+      fac.name,
+      fac.department,
+      fac.designation || 'Faculty',
+      fac.maxHours || 20,
+      deptHours,
+      externalHours,
+      totalLoad,
+      status,
+    ]);
+  });
+
+  const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+  wsSummary['!cols'] = [{ wch: 12 }, { wch: 24 }, { wch: 14 }, { wch: 20 }, { wch: 12 }, { wch: 18 }, { wch: 18 }, { wch: 16 }, { wch: 14 }];
+  XLSX.utils.book_append_sheet(wb, wsSummary, 'All Faculty Summary');
+
+  // Sheet 2..N: Individual Schedules
+  faculty.forEach((fac) => {
+    const headers = ['Day', 'P1 (09:00-09:50)', 'P2 (09:50-10:40)', 'P3 (10:55-11:45)', 'P4 (11:45-12:35)', 'LUNCH', 'P5 (01:25-02:15)', 'P6 (02:15-03:05)', 'P7 (03:05-03:55)'];
+    const rows = [
+      [`FACULTY INDIVIDUAL SCHEDULE - ${fac.name.toUpperCase()}`],
+      [`ID: ${fac.id} | Department: ${fac.department} | Role: ${fac.designation || 'Faculty'}`],
+      [],
+      headers,
+    ];
+
+    DAYS.forEach((day) => {
+      const row = [day];
+      const getCell = (p) => {
+        const parts = [];
+        if (fac.lockedSlots) {
+          const ext = fac.lockedSlots.find((ls) => ls.day === day && Number(ls.period) === Number(p));
+          if (ext) parts.push(`[LOCKED ${ext.dept}]`);
+        }
+        Object.entries(timetables).forEach(([secId, secGrid]) => {
+          const slot = secGrid[day]?.[p];
+          if (slot && slot.facultyIds && slot.facultyIds.includes(fac.id)) {
+            const sub = subjectsMap[slot.subjectCode];
+            const acronym = getSubjectAcronym(sub?.name || slot.subjectName || slot.subjectCode, slot.subjectCode);
+            parts.push(`${slot.subjectCode} (${acronym}) - ${sectionsMap[secId]?.name || secId}`);
+          }
+        });
+        return parts.length === 0 ? 'FREE' : parts.join(' | ');
+      };
+
+      for (let p = 1; p <= 4; p++) row.push(getCell(p));
+      row.push('LUNCH');
+      if (day === 'Saturday') {
+        row.push('INACTIVE', 'INACTIVE', 'INACTIVE');
+      } else {
+        for (let p = 5; p <= 7; p++) row.push(getCell(p));
+      }
+      rows.push(row);
+    });
+
+    const ws = XLSX.utils.aoa_to_sheet(rows);
+    ws['!cols'] = Array(9).fill({ wch: 22 });
+    const sheetName = fac.name.replace(/[^a-zA-Z0-9]/g, '_').slice(0, 31);
+    XLSX.utils.book_append_sheet(wb, ws, sheetName);
+  });
+
+  XLSX.writeFile(wb, 'Overall_All_Faculty_Timetables.xlsx');
+};

@@ -9,21 +9,30 @@ import {
   Users, 
   Search,
   Sparkles,
-  UserCheck
+  UserCheck,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 import { 
   exportSectionToExcel, 
   exportMasterGridToExcel, 
   exportFacultyWorkloadToExcel, 
   exportFreeFacultyReportToExcel,
-  exportSelectedFacultyTimetableToExcel 
+  exportSelectedFacultyTimetableToExcel,
+  exportAllFacultyToExcel
 } from '../../services/excelExport';
 import { 
   exportSectionToPdf, 
+  exportAllSectionsToPdf,
   exportFacultyWorkloadToPdf, 
   exportFreeFacultyToPdf,
-  exportSelectedFacultyTimetableToPdf 
+  exportSelectedFacultyTimetableToPdf,
+  exportAllFacultyToPdf 
 } from '../../services/pdfExport';
+import {
+  exportAllSectionsToWord,
+  exportAllFacultyToWord
+} from '../../services/wordExport';
 import { DAYS, DAY_PERIODS } from '../../types/constants';
 
 export const ExportStep = ({
@@ -37,36 +46,66 @@ export const ExportStep = ({
   const [selectedFacultyId, setSelectedFacultyId] = useState(faculty[0]?.id || '');
   const [reportDay, setReportDay] = useState('Monday');
   const [reportPeriod, setReportPeriod] = useState(2);
+  const [showSingleSection, setShowSingleSection] = useState(false);
+  const [showSingleFaculty, setShowSingleFaculty] = useState(false);
 
   const activeSection = sections.find((s) => s.id === selectedSectionId) || sections[0];
   const activeTimetable = timetables[activeSection?.id] || {};
   const activeFaculty = faculty.find((f) => f.id === selectedFacultyId) || faculty[0];
 
-  // Export handlers
-  const handleExportSectionExcel = () => {
-    exportSectionToExcel(activeSection, activeTimetable, subjects, faculty);
+  // 1. Overall All Sections Handlers (Single-click)
+  const handleExportAllSectionsPdf = () => {
+    exportAllSectionsToPdf(sections, timetables, subjects, faculty);
   };
 
-  const handleExportSectionPdf = () => {
-    exportSectionToPdf(activeSection, activeTimetable, subjects, faculty);
+  const handleExportAllSectionsWord = () => {
+    exportAllSectionsToWord(sections, timetables, subjects, faculty);
   };
 
   const handleExportMasterExcel = () => {
     exportMasterGridToExcel(sections, timetables, subjects, faculty);
   };
 
-  const handleExportSelectedFacultyPdf = () => {
+  // 2. Overall All Faculty Handlers (Single-click)
+  const handleExportAllFacultyPdf = () => {
+    exportAllFacultyToPdf(faculty, timetables, subjects, sections);
+  };
+
+  const handleExportAllFacultyWord = () => {
+    exportAllFacultyToWord(faculty, timetables, subjects, sections);
+  };
+
+  const handleExportAllFacultyExcel = () => {
+    exportAllFacultyToExcel(faculty, timetables, subjects, sections);
+  };
+
+  // 3. Single Section Handlers (Secondary / Optional)
+  const handleExportSingleSectionPdf = () => {
+    if (activeSection) {
+      exportSectionToPdf(activeSection, activeTimetable, subjects, faculty);
+    }
+  };
+
+  const handleExportSingleSectionExcel = () => {
+    if (activeSection) {
+      exportSectionToExcel(activeSection, activeTimetable, subjects, faculty);
+    }
+  };
+
+  // 4. Single Faculty Handlers (Secondary / Optional)
+  const handleExportSingleFacultyPdf = () => {
     if (activeFaculty) {
       exportSelectedFacultyTimetableToPdf(activeFaculty, timetables, subjects, sections);
     }
   };
 
-  const handleExportSelectedFacultyExcel = () => {
+  const handleExportSingleFacultyExcel = () => {
     if (activeFaculty) {
       exportSelectedFacultyTimetableToExcel(activeFaculty, timetables, subjects, sections);
     }
   };
 
+  // 5. Workload & Free Faculty Handlers
   const handleExportFacultyExcel = () => {
     exportFacultyWorkloadToExcel(faculty, timetables, subjects, sections);
   };
@@ -149,11 +188,11 @@ export const ExportStep = ({
               Timetable Export Center
             </h2>
             <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700 border border-indigo-200">
-              SheetJS (.xlsx) & jsPDF
+              PDF, Word (.doc) & Excel (.xlsx)
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            One-click publication of official Section Timetables, Master Department Grids, Faculty Workload Reports, and Free Faculty Substitution Lists.
+            Single-click publication of official All-Sections Timetables (Adhiyamaan College format), All-Faculty Schedules, Workload Analysis, and Free Faculty Reports.
           </p>
         </div>
 
@@ -189,126 +228,189 @@ export const ExportStep = ({
       ) : (
       /* Grid of 4 Export Cards */
       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        {/* Card 1: Section Timetable Export */}
+        {/* Card 1: All Sections Timetable Export (Overall All Years & Sections) */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between space-y-4">
           <div>
             <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-center text-indigo-600 mb-3">
               <Layers className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-slate-900">
-              Section Timetable (Individual Class)
-            </h3>
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-base font-bold text-slate-900">
+                All Sections Timetable (Overall Department)
+              </h3>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800">
+                {sections.length} Sections
+              </span>
+            </div>
             <p className="text-xs text-slate-500 mt-1">
-              Complete weekly 39-period schedule with Subject codes, full titles, assigned Faculty, and designated Tutor Hours.
+              Single-click download for all {sections.length} class sections (Years 2, 3, 4) in the official <strong>Adhiyamaan College format</strong>: Header with AY 2026-2027, weekly period grid, subject-faculty mapping, and 5-authority signatures.
             </p>
+          </div>
 
-            <div className="mt-4">
-              <label className="block text-xs font-semibold text-slate-600 mb-1">
-                Choose Section:
-              </label>
-              <select
-                value={selectedSectionId}
-                onChange={(e) => setSelectedSectionId(e.target.value)}
-                className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800"
+          <div className="space-y-3 pt-2">
+            {/* Primary Action Buttons: PDF and Word format in exact uploaded template */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <button
+                onClick={handleExportAllSectionsPdf}
+                className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-200 transition-colors"
+                title="Download consolidated PDF for all sections in uploaded college format"
               >
-                {sections.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name} (Year {s.year})
-                  </option>
-                ))}
-              </select>
+                <FileText className="w-4 h-4" />
+                <span>Export All Sections PDF</span>
+              </button>
+
+              <button
+                onClick={handleExportAllSectionsWord}
+                className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-200 transition-colors"
+                title="Download editable Microsoft Word (.doc) for all sections in uploaded college format"
+              >
+                <FileText className="w-4 h-4" />
+                <span>Export All Sections Word (.doc)</span>
+              </button>
             </div>
-          </div>
 
-          <div className="grid grid-cols-2 gap-3 pt-2">
-            <button
-              onClick={handleExportSectionExcel}
-              className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold border border-emerald-200 transition-colors"
-            >
-              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-              <span>Export Excel (.xlsx)</span>
-            </button>
-            <button
-              onClick={handleExportSectionPdf}
-              className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold border border-rose-200 transition-colors"
-            >
-              <FileText className="w-4 h-4 text-rose-600" />
-              <span>Export PDF</span>
-            </button>
-          </div>
-        </div>
-
-        {/* Card 2: Master Department Grid Export */}
-        <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between space-y-4">
-          <div>
-            <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 mb-3">
-              <FileSpreadsheet className="w-5 h-5" />
-            </div>
-            <h3 className="text-base font-bold text-slate-900">
-              Department Master Grid (All Sections)
-            </h3>
-            <p className="text-xs text-slate-500 mt-1">
-              Multi-sheet Excel workbook bundling all {sections.length} class sections into a single master departmental file for the Dean / HOD office.
-            </p>
-          </div>
-
-          <div className="pt-2">
+            {/* Master Excel Button */}
             <button
               onClick={handleExportMasterExcel}
-              className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold shadow-md shadow-emerald-200 transition-colors"
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold border border-emerald-200 transition-colors"
             >
-              <FileSpreadsheet className="w-4 h-4" />
+              <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
               <span>Export All Sections Master Excel (.xlsx)</span>
             </button>
+
+            {/* Collapsible Single Section Drawer (if specific class download is ever needed) */}
+            <div className="pt-2 border-t border-slate-100">
+              <button
+                onClick={() => setShowSingleSection(!showSingleSection)}
+                className="w-full flex items-center justify-between text-[11px] font-semibold text-slate-500 hover:text-slate-800 transition-colors py-1"
+              >
+                <span>Need individual section download?</span>
+                {showSingleSection ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+
+              {showSingleSection && (
+                <div className="mt-2 space-y-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <select
+                    value={selectedSectionId}
+                    onChange={(e) => setSelectedSectionId(e.target.value)}
+                    className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg font-medium text-slate-800"
+                  >
+                    {sections.map((s) => (
+                      <option key={s.id} value={s.id}>
+                        {s.name} (Year {s.year})
+                      </option>
+                    ))}
+                  </select>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={handleExportSingleSectionPdf}
+                      className="py-1.5 px-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold border border-rose-200 text-center"
+                    >
+                      Single PDF
+                    </button>
+                    <button
+                      onClick={handleExportSingleSectionExcel}
+                      className="py-1.5 px-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold border border-emerald-200 text-center"
+                    >
+                      Single Excel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
-        {/* Card 3: Selected Faculty Timetable Export */}
+        {/* Card 2: All Faculty Timetables Export (Overall Department) */}
         <div className="bg-white rounded-2xl border border-slate-200 p-6 shadow-xs flex flex-col justify-between space-y-4">
           <div>
             <div className="w-10 h-10 rounded-xl bg-rose-50 border border-rose-200 flex items-center justify-center text-rose-600 mb-3">
               <UserCheck className="w-5 h-5" />
             </div>
-            <h3 className="text-base font-bold text-slate-900">
-              Selected Faculty Timetable (PDF / Excel)
-            </h3>
-            <p className="text-xs text-slate-500 mt-1">
-              Personalized weekly teaching box schedule for any selected teacher with allocated classes, subjects, external locked hours, and official signature blocks.
-            </p>
-
-            <div className="mt-4">
-              <label className="block text-xs font-semibold text-slate-600 mb-1">
-                Choose Faculty Member:
-              </label>
-              <select
-                value={selectedFacultyId}
-                onChange={(e) => setSelectedFacultyId(e.target.value)}
-                className="w-full text-xs p-2.5 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800"
-              >
-                {faculty.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name} ({f.department}) - {f.designation || 'Faculty'}
-                  </option>
-                ))}
-              </select>
+            <div className="flex items-center justify-between gap-2">
+              <h3 className="text-base font-bold text-slate-900">
+                All Faculty Timetables (Overall Department)
+              </h3>
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800">
+                {faculty.length} Faculty
+              </span>
             </div>
+            <p className="text-xs text-slate-500 mt-1">
+              Single-click download for all {faculty.length} teachers. Bundles personalized weekly schedules, allocated curriculum classes, other department locked commitments, and official signature blocks.
+            </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3 pt-2">
+          <div className="space-y-3 pt-2">
+            {/* Primary Action Buttons: PDF and Word format */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+              <button
+                onClick={handleExportAllFacultyPdf}
+                className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-200 transition-colors"
+                title="Download consolidated PDF containing all faculty schedules"
+              >
+                <FileText className="w-4 h-4" />
+                <span>Export All Faculty PDF</span>
+              </button>
+
+              <button
+                onClick={handleExportAllFacultyWord}
+                className="flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold shadow-md shadow-indigo-200 transition-colors"
+                title="Download editable Microsoft Word (.doc) for all faculty schedules"
+              >
+                <FileText className="w-4 h-4" />
+                <span>Export All Faculty Word (.doc)</span>
+              </button>
+            </div>
+
+            {/* Master Faculty Excel Button */}
             <button
-              onClick={handleExportSelectedFacultyExcel}
-              className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold border border-emerald-200 transition-colors"
+              onClick={handleExportAllFacultyExcel}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-emerald-50 hover:bg-emerald-100 text-emerald-800 text-xs font-semibold border border-emerald-200 transition-colors"
             >
               <FileSpreadsheet className="w-4 h-4 text-emerald-600" />
-              <span>Export Excel</span>
+              <span>Export All Faculty Excel Workbook (.xlsx)</span>
             </button>
-            <button
-              onClick={handleExportSelectedFacultyPdf}
-              className="flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold shadow-md shadow-rose-200 transition-colors"
-            >
-              <FileText className="w-4 h-4" />
-              <span>Export Faculty PDF</span>
-            </button>
+
+            {/* Collapsible Single Faculty Drawer (if specific teacher download is needed) */}
+            <div className="pt-2 border-t border-slate-100">
+              <button
+                onClick={() => setShowSingleFaculty(!showSingleFaculty)}
+                className="w-full flex items-center justify-between text-[11px] font-semibold text-slate-500 hover:text-slate-800 transition-colors py-1"
+              >
+                <span>Need individual teacher schedule?</span>
+                {showSingleFaculty ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+              </button>
+
+              {showSingleFaculty && (
+                <div className="mt-2 space-y-2.5 p-3 rounded-xl bg-slate-50 border border-slate-200">
+                  <select
+                    value={selectedFacultyId}
+                    onChange={(e) => setSelectedFacultyId(e.target.value)}
+                    className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg font-medium text-slate-800"
+                  >
+                    {faculty.map((f) => (
+                      <option key={f.id} value={f.id}>
+                        {f.name} ({f.department}) - {f.designation || 'Faculty'}
+                      </option>
+                    ))}
+                  </select>
+                  <div className="grid grid-cols-2 gap-2">
+                    <button
+                      onClick={handleExportSingleFacultyPdf}
+                      className="py-1.5 px-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold border border-rose-200 text-center"
+                    >
+                      Single Faculty PDF
+                    </button>
+                    <button
+                      onClick={handleExportSingleFacultyExcel}
+                      className="py-1.5 px-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold border border-emerald-200 text-center"
+                    >
+                      Single Faculty Excel
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
