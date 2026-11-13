@@ -113,7 +113,7 @@ export const isFacultyBusy = (
     if (!secGrid || !secGrid[day]) continue;
     const slot = secGrid[day][period];
     if (slot && slot.subjectCode) {
-      if (sId === ignoreSectionId && Number(period) === Number(ignorePeriod)) {
+      if (ignoreSectionId && sId === ignoreSectionId) {
         continue;
       }
       if (slot.facultyIds && slot.facultyIds.includes(facultyId)) {

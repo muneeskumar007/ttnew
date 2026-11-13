@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { 
   Grid, 
   Lock, 
@@ -35,6 +35,56 @@ export const TimetableDisplayStep = ({
   const activeTimetable = timetables[activeSection?.id] || {};
   const facultyMap = Object.fromEntries(faculty.map((f) => [f.id, f]));
   const subjectsMap = Object.fromEntries(subjects.map((s) => [s.code, s]));
+
+  // Active source slot (either held via drag or selected via click)
+  const activeSourceSlot = draggedSlot || selectedSlotForSwap;
+
+  // Compute all collision-free valid swap/move destination slots in real time (<0.5ms)
+  const validSwapTargets = useMemo(() => {
+    if (!activeSourceSlot || !activeSection) return new Set();
+
+    const validKeys = new Set();
+    const sourceSlot = activeTimetable[activeSourceSlot.day]?.[activeSourceSlot.period];
+    // A locked slot cannot be moved
+    if (sourceSlot?.isLocked) return validKeys;
+
+    for (const day of DAYS) {
+      const maxP = day === 'Saturday' ? 4 : 7;
+      for (let p = 1; p <= maxP; p++) {
+        // Skip self
+        if (day === activeSourceSlot.day && Number(p) === Number(activeSourceSlot.period)) {
+          continue;
+        }
+
+        const res = validateSwap({
+          sectionId: activeSection.id,
+          day1: activeSourceSlot.day,
+          period1: activeSourceSlot.period,
+          day2: day,
+          period2: p,
+          timetables,
+          allFaculty: faculty,
+        });
+
+        if (res.allowed) {
+          validKeys.add(`${day}_${p}`);
+        }
+      }
+    }
+    return validKeys;
+  }, [activeSourceSlot, activeSection, activeTimetable, timetables, faculty]);
+
+  // Keyboard shortcut: Press Escape to cancel active slot selection or drag
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setSelectedSlotForSwap(null);
+        setDraggedSlot(null);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
 
   // Execute Swap with Hard Collision Guard
   const performSwap = (day1, period1, day2, period2) => {
@@ -104,27 +154,89 @@ export const TimetableDisplayStep = ({
     });
   };
 
-  // Click-to-swap handler
+  // Click-to-swap handler with interactive green lighting validation
   const handleSlotClick = (day, period) => {
     if (day === 'Saturday' && period > 4) return;
 
     if (!selectedSlotForSwap) {
-      // Select first slot
+      // Nothing currently selected: check if clicked slot is eligible to be a source
+      const slot = activeTimetable[day]?.[period];
+      if (!slot) {
+        setSwapAlert({
+          type: 'error',
+          message: 'Please select an assigned subject slot first to move or swap it.',
+        });
+        return;
+      }
+      if (slot.isLocked) {
+        setSwapAlert({
+          type: 'error',
+          message: `Slot (${day} P${period}: ${slot.subjectCode}) is locked/prefixed and cannot be moved.`,
+        });
+        return;
+      }
+      // Set as active source slot
       setSelectedSlotForSwap({ day, period });
+      setSwapAlert(null);
     } else {
-      // Select second slot and swap
-      performSwap(selectedSlotForSwap.day, selectedSlotForSwap.period, day, period);
+      // Slot already selected
+      // If clicking the same slot again, toggle/deselect
+      if (selectedSlotForSwap.day === day && Number(selectedSlotForSwap.period) === Number(period)) {
+        setSelectedSlotForSwap(null);
+        return;
+      }
+
+      // Check if target slot is among the valid collision-free targets
+      const targetKey = `${day}_${period}`;
+      if (validSwapTargets.has(targetKey)) {
+        performSwap(selectedSlotForSwap.day, selectedSlotForSwap.period, day, period);
+      } else {
+        // Target is invalid / resting: show exact collision guard reason
+        const validation = validateSwap({
+          sectionId: activeSection.id,
+          day1: selectedSlotForSwap.day,
+          period1: selectedSlotForSwap.period,
+          day2: day,
+          period2: period,
+          timetables,
+          allFaculty: faculty,
+        });
+        setSwapAlert({
+          type: 'error',
+          message: `Swap Blocked: ${validation.reason || 'Resting slot cannot be moved to.'}`,
+        });
+      }
     }
   };
 
   // Drag and Drop handlers
   const handleDragStart = (e, day, period) => {
+    const slot = activeTimetable[day]?.[period];
+    if (slot?.isLocked) {
+      e.preventDefault();
+      return;
+    }
     setDraggedSlot({ day, period });
     e.dataTransfer.setData('text/plain', JSON.stringify({ day, period }));
+    e.dataTransfer.effectAllowed = 'move';
   };
 
-  const handleDragOver = (e) => {
+  const handleDragEnd = () => {
+    setDraggedSlot(null);
+  };
+
+  const handleDragOver = (e, day, period) => {
     e.preventDefault();
+    if (day === 'Saturday' && period > 4) {
+      e.dataTransfer.dropEffect = 'none';
+      return;
+    }
+    const key = `${day}_${period}`;
+    if (validSwapTargets.has(key)) {
+      e.dataTransfer.dropEffect = 'move';
+    } else {
+      e.dataTransfer.dropEffect = 'none';
+    }
   };
 
   const handleDrop = (e, targetDay, targetPeriod) => {
@@ -234,21 +346,37 @@ export const TimetableDisplayStep = ({
         </div>
       )}
 
-      {/* Selected for Swap Pill */}
+      {/* Selected for Swap Live Guidance Banner */}
       {selectedSlotForSwap && (
-        <div className="p-3 rounded-xl bg-indigo-50 border border-indigo-200 flex items-center justify-between text-xs text-indigo-900 no-print animate-pulse">
-          <div className="flex items-center gap-2">
-            <ArrowLeftRight className="w-4 h-4 text-indigo-600" />
-            <span>
-              Selected <strong>{selectedSlotForSwap.day} Period {selectedSlotForSwap.period}</strong> for swap. Click another open or un-locked slot to swap!
-            </span>
+        <div className="p-4 rounded-2xl bg-gradient-to-r from-emerald-50 via-teal-50 to-indigo-50 border-2 border-emerald-300 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs text-slate-800 shadow-sm no-print">
+          <div className="flex items-start sm:items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-xs animate-pulse">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="font-bold text-slate-900 flex items-center gap-2 flex-wrap">
+                <span>Moving:</span>
+                <span className="px-2 py-0.5 rounded-md bg-indigo-600 text-white font-mono text-[11px]">
+                  {activeTimetable[selectedSlotForSwap.day]?.[selectedSlotForSwap.period]?.subjectCode || 'Period'} ({selectedSlotForSwap.day} P{selectedSlotForSwap.period})
+                </span>
+                <span className="text-emerald-700 font-semibold flex items-center gap-1">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping inline-block" />
+                  {validSwapTargets.size} Valid Destination{validSwapTargets.size === 1 ? '' : 's'} Available
+                </span>
+              </div>
+              <p className="text-[11px] text-slate-600 mt-0.5">
+                All collision-free target periods are <strong>blinking with green lighting</strong>. Click or drop on any green slot to swap safely. Resting (dimmed) slots are blocked by collisions or locks.
+              </p>
+            </div>
           </div>
-          <button
-            onClick={() => setSelectedSlotForSwap(null)}
-            className="text-xs font-bold text-indigo-600 hover:underline"
-          >
-            Cancel Swap
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => setSelectedSlotForSwap(null)}
+              className="px-3 py-1.5 rounded-xl text-xs font-bold text-slate-700 bg-white hover:bg-slate-100 border border-slate-300 shadow-2xs transition-colors"
+            >
+              Cancel Swap (Esc)
+            </button>
+          </div>
         </div>
       )}
 
@@ -298,6 +426,10 @@ export const TimetableDisplayStep = ({
 
           {/* Legend */}
           <div className="flex flex-wrap items-center gap-3 text-[11px] no-print">
+            <div className="flex items-center gap-1.5">
+              <span className="w-3 h-3 rounded bg-emerald-100 border-2 border-emerald-500 shadow-xs animate-pulse" />
+              <span className="text-slate-700 font-semibold">Available Swap (Green Glow)</span>
+            </div>
             <div className="flex items-center gap-1">
               <span className="w-3 h-3 rounded tutor-glow bg-amber-50" />
               <span className="text-slate-600">Tutor Hour (Gold Halo)</span>
@@ -372,18 +504,26 @@ export const TimetableDisplayStep = ({
                     {/* Periods 1 to 4 */}
                     {[1, 2, 3, 4].map((p) => {
                       const slot = dayGrid[p];
-                      const isSelected =
-                        selectedSlotForSwap &&
-                        selectedSlotForSwap.day === day &&
-                        selectedSlotForSwap.period === p;
+                      const isSource =
+                        activeSourceSlot &&
+                        activeSourceSlot.day === day &&
+                        Number(activeSourceSlot.period) === Number(p);
+                      const isValidTarget = validSwapTargets.has(`${day}_${p}`);
+                      const isResting = activeSourceSlot && !isSource && !isValidTarget;
 
                       return (
                         <td
                           key={p}
-                          className={`p-1.5 border border-slate-100 align-top transition-all ${
-                            isSelected ? 'ring-2 ring-indigo-600 bg-indigo-50' : ''
+                          className={`p-1.5 border align-top transition-all ${
+                            isSource
+                              ? 'border-indigo-400 bg-indigo-50/50'
+                              : isValidTarget
+                              ? 'border-emerald-300 bg-emerald-50/30'
+                              : isResting
+                              ? 'border-slate-100 opacity-40'
+                              : 'border-slate-100'
                           }`}
-                          onDragOver={handleDragOver}
+                          onDragOver={(e) => handleDragOver(e, day, p)}
                           onDrop={(e) => handleDrop(e, day, p)}
                         >
                           {slot ? (
@@ -394,15 +534,42 @@ export const TimetableDisplayStep = ({
                               facultyMap={facultyMap}
                               subjectsMap={subjectsMap}
                               activeSection={activeSection}
+                              isSource={isSource}
+                              isValidTarget={isValidTarget}
+                              isResting={isResting}
                               onClick={() => handleSlotClick(day, p)}
                               onDragStart={(e) => handleDragStart(e, day, p)}
+                              onDragEnd={handleDragEnd}
                             />
                           ) : (
                             <div
                               onClick={() => handleSlotClick(day, p)}
-                              className="w-full h-20 rounded-xl border-2 border-dashed border-slate-200 hover:border-slate-300 flex items-center justify-center text-slate-400 text-[11px] cursor-pointer"
+                              className={`w-full h-20 rounded-xl flex flex-col items-center justify-center text-xs transition-all select-none ${
+                                isValidTarget
+                                  ? 'valid-swap-glow border-2 border-emerald-500 bg-emerald-50/90 text-emerald-800 font-bold shadow-md cursor-pointer'
+                                  : isResting
+                                  ? 'border-2 border-dashed border-slate-200 text-slate-300 opacity-40 cursor-not-allowed'
+                                  : 'border-2 border-dashed border-slate-200 hover:border-slate-300 text-slate-400 cursor-pointer'
+                              }`}
+                              title={
+                                isValidTarget
+                                  ? '✓ Available Free Slot: Click or drop here to move subject into this period'
+                                  : isResting
+                                  ? '✕ Resting: Collision prevents moving here'
+                                  : 'Free Slot'
+                              }
                             >
-                              Free Slot
+                              {isValidTarget ? (
+                                <>
+                                  <div className="flex items-center gap-1 text-emerald-700">
+                                    <Sparkles className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                                    <span className="text-[10px] uppercase tracking-wider font-extrabold">Available</span>
+                                  </div>
+                                  <span className="text-[10px] text-emerald-600 font-medium">Free Slot</span>
+                                </>
+                              ) : (
+                                <span className="text-[11px]">Free Slot</span>
+                              )}
                             </div>
                           )}
                         </td>
@@ -428,18 +595,26 @@ export const TimetableDisplayStep = ({
                     ) : (
                       [5, 6, 7].map((p) => {
                         const slot = dayGrid[p];
-                        const isSelected =
-                          selectedSlotForSwap &&
-                          selectedSlotForSwap.day === day &&
-                          selectedSlotForSwap.period === p;
+                        const isSource =
+                          activeSourceSlot &&
+                          activeSourceSlot.day === day &&
+                          Number(activeSourceSlot.period) === Number(p);
+                        const isValidTarget = validSwapTargets.has(`${day}_${p}`);
+                        const isResting = activeSourceSlot && !isSource && !isValidTarget;
 
                         return (
                           <td
                             key={p}
-                            className={`p-1.5 border border-slate-100 align-top transition-all ${
-                              isSelected ? 'ring-2 ring-indigo-600 bg-indigo-50' : ''
+                            className={`p-1.5 border align-top transition-all ${
+                              isSource
+                                ? 'border-indigo-400 bg-indigo-50/50'
+                                : isValidTarget
+                                ? 'border-emerald-300 bg-emerald-50/30'
+                                : isResting
+                                ? 'border-slate-100 opacity-40'
+                                : 'border-slate-100'
                             }`}
-                            onDragOver={handleDragOver}
+                            onDragOver={(e) => handleDragOver(e, day, p)}
                             onDrop={(e) => handleDrop(e, day, p)}
                           >
                             {slot ? (
@@ -450,15 +625,42 @@ export const TimetableDisplayStep = ({
                                 facultyMap={facultyMap}
                                 subjectsMap={subjectsMap}
                                 activeSection={activeSection}
+                                isSource={isSource}
+                                isValidTarget={isValidTarget}
+                                isResting={isResting}
                                 onClick={() => handleSlotClick(day, p)}
                                 onDragStart={(e) => handleDragStart(e, day, p)}
+                                onDragEnd={handleDragEnd}
                               />
                             ) : (
                               <div
                                 onClick={() => handleSlotClick(day, p)}
-                                className="w-full h-20 rounded-xl border-2 border-dashed border-slate-200 hover:border-slate-300 flex items-center justify-center text-slate-400 text-[11px] cursor-pointer"
+                                className={`w-full h-20 rounded-xl flex flex-col items-center justify-center text-xs transition-all select-none ${
+                                  isValidTarget
+                                    ? 'valid-swap-glow border-2 border-emerald-500 bg-emerald-50/90 text-emerald-800 font-bold shadow-md cursor-pointer'
+                                    : isResting
+                                    ? 'border-2 border-dashed border-slate-200 text-slate-300 opacity-40 cursor-not-allowed'
+                                    : 'border-2 border-dashed border-slate-200 hover:border-slate-300 text-slate-400 cursor-pointer'
+                                }`}
+                                title={
+                                  isValidTarget
+                                    ? '✓ Available Free Slot: Click or drop here to move subject into this period'
+                                    : isResting
+                                    ? '✕ Resting: Collision prevents moving here'
+                                    : 'Free Slot'
+                                }
                               >
-                                Free Slot
+                                {isValidTarget ? (
+                                  <>
+                                    <div className="flex items-center gap-1 text-emerald-700">
+                                      <Sparkles className="w-3.5 h-3.5 text-emerald-600 animate-pulse" />
+                                      <span className="text-[10px] uppercase tracking-wider font-extrabold">Available</span>
+                                    </div>
+                                    <span className="text-[10px] text-emerald-600 font-medium">Free Slot</span>
+                                  </>
+                                ) : (
+                                  <span className="text-[11px]">Free Slot</span>
+                                )}
                               </div>
                             )}
                           </td>
@@ -477,7 +679,7 @@ export const TimetableDisplayStep = ({
   );
 };
 
-// Sub-component: Individual Slot Box with Same Subject Palette & 2px Solid Border + Tutor Halo
+// Sub-component: Individual Slot Box with Same Subject Palette & 2px Solid Border + Tutor Halo + Green Swap Glow
 const SlotBox = ({
   slot,
   day,
@@ -485,8 +687,12 @@ const SlotBox = ({
   facultyMap,
   subjectsMap,
   activeSection,
+  isSource,
+  isValidTarget,
+  isResting,
   onClick,
   onDragStart,
+  onDragEnd,
 }) => {
   const sub = subjectsMap[slot.subjectCode];
   const palette = sub
@@ -497,7 +703,9 @@ const SlotBox = ({
   const isTutorHour =
     slot.isTutorHour ||
     (slot.subjectName && slot.subjectName.toLowerCase().includes('mentor')) ||
-    (slot.facultyIds && slot.facultyIds.includes(activeSection?.mentorFacultyId) && slot.subjectCode.includes('208'));
+    (slot.facultyIds &&
+      slot.facultyIds.includes(activeSection?.mentorFacultyId) &&
+      slot.subjectCode.includes('208'));
 
   const facultyNames = (slot.facultyIds || [])
     .map((id) => facultyMap[id]?.name || id)
@@ -507,24 +715,63 @@ const SlotBox = ({
     <div
       draggable={!slot.isLocked}
       onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
       onClick={onClick}
-      className={`p-2 rounded-xl text-left relative transition-all duration-150 cursor-pointer select-none group min-h-[78px] flex flex-col justify-between ${
+      className={`p-2 rounded-xl text-left relative transition-all duration-150 select-none group min-h-[78px] flex flex-col justify-between ${
         isTutorHour ? 'tutor-glow' : ''
-      } ${slot.isLocked ? 'bg-stripes-locked' : ''}`}
-      style={{
-        backgroundColor: slot.isLocked ? undefined : palette.bg,
-        border: `2px solid ${palette.border}`,
-        boxShadow: isTutorHour ? undefined : '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
-      }}
-      title={`${slot.subjectCode}: ${sub?.name || ''} | Faculty: ${facultyNames} ${
-        slot.isLocked ? '(LOCKED)' : '(Drag or click to swap)'
+      } ${slot.isLocked ? 'bg-stripes-locked' : ''} ${
+        isSource
+          ? 'ring-2 ring-indigo-600 ring-offset-2 scale-[1.02] shadow-md z-30'
+          : isValidTarget
+          ? 'valid-swap-glow cursor-pointer'
+          : isResting
+          ? 'opacity-40 grayscale-[25%] cursor-not-allowed hover:opacity-50'
+          : 'cursor-pointer hover:shadow-md'
       }`}
+      style={{
+        backgroundColor: isValidTarget
+          ? '#ecfdf5'
+          : slot.isLocked
+          ? undefined
+          : palette.bg,
+        border: isValidTarget
+          ? '2px solid #059669'
+          : isSource
+          ? '2px solid #4f46e5'
+          : `2px solid ${palette.border}`,
+        boxShadow: isValidTarget
+          ? undefined
+          : isTutorHour
+          ? undefined
+          : '0 1px 3px 0 rgba(0, 0, 0, 0.05)',
+      }}
+      title={
+        isValidTarget
+          ? `✓ Available Period! Click or drop here to swap with ${slot.subjectCode}`
+          : isResting
+          ? `✕ Resting Period: Cannot move here due to collision or lock`
+          : `${slot.subjectCode}: ${sub?.name || ''} | Faculty: ${facultyNames} ${
+              slot.isLocked ? '(LOCKED)' : '(Drag or click to swap)'
+            }`
+      }
     >
+      {/* Visual Badges for Swap status */}
+      {isSource && (
+        <div className="absolute -top-2 -right-1 bg-indigo-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full shadow-sm flex items-center gap-0.5 z-30 pointer-events-none">
+          <ArrowLeftRight className="w-2.5 h-2.5" /> SOURCE
+        </div>
+      )}
+      {isValidTarget && (
+        <div className="absolute -top-2 -right-1 bg-emerald-600 text-white text-[8px] font-bold px-1.5 py-0.5 rounded-full shadow-sm flex items-center gap-0.5 z-30 pointer-events-none animate-pulse">
+          <Sparkles className="w-2.5 h-2.5" /> CAN SWAP
+        </div>
+      )}
+
       <div>
         <div className="flex items-center justify-between gap-1">
           <span
             className="font-bold text-xs leading-none"
-            style={{ color: palette.text }}
+            style={{ color: isValidTarget ? '#065f46' : palette.text }}
           >
             {slot.subjectCode}
           </span>
@@ -548,7 +795,11 @@ const SlotBox = ({
 
         <div className="my-1">
           <div
-            className="font-black text-sm tracking-tight text-slate-900 group-hover:text-indigo-900 transition-colors"
+            className={`font-black text-sm tracking-tight transition-colors ${
+              isValidTarget
+                ? 'text-emerald-950'
+                : 'text-slate-900 group-hover:text-indigo-900'
+            }`}
             title={`${slot.subjectCode}: ${sub?.name || slot.subjectCode}`}
           >
             {getSubjectAcronym(sub?.name || slot.subjectName || slot.subjectCode, slot.subjectCode)}
@@ -556,7 +807,9 @@ const SlotBox = ({
         </div>
       </div>
 
-      <div className="text-[10px] text-slate-600 font-medium truncate mt-1 pt-1 border-t border-black/5">
+      <div className={`text-[10px] font-medium truncate mt-1 pt-1 border-t ${
+        isValidTarget ? 'text-emerald-800 border-emerald-200' : 'text-slate-600 border-black/5'
+      }`}>
         {facultyNames || 'Unassigned'}
       </div>
     </div>
