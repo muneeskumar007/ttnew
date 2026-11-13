@@ -405,6 +405,7 @@ export function App() {
                 faculty={faculty}
                 allocations={allocations}
                 prefixedSlots={prefixedSlots}
+                setPrefixedSlots={setPrefixedSlots}
                 timetables={timetables}
                 setTimetables={setTimetables}
                 setActiveStep={setActiveStep}

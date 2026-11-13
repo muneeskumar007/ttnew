@@ -322,12 +322,31 @@ function solveSectionWithFastState({
 
         // Zero Faculty Collisions Check
         for (const fId of assignedFac) {
-          if (facultyBusy[fId]?.[d]?.[p]) {
+          const occ = facultyBusy[fId]?.[d]?.[p];
+          if (occ && occ.sectionId !== sec.id) {
             // Collision with another section or external locked load
             assignedHistory.forEach(({ day, period, fId: fac }) => {
               delete facultyBusy[fac][day][period];
             });
-            return { success: false, reason: `Collision for ${fId} at ${d} P${p}` };
+            const facObj = faculty.find((f) => f.id === fId);
+            const facName = facObj ? facObj.name : fId;
+            const collisionDetail = occ.isExternalLocked
+              ? `Faculty ${facName} has an external locked slot (${occ.dept || 'External'}) on ${d} Period ${p}.`
+              : `Faculty ${facName} is already assigned to section "${occ.sectionId}" on ${d} Period ${p}.`;
+
+            return {
+              success: false,
+              reason: `Collision for ${facName} at ${d} P${p}`,
+              detail: `Section "${sec.name}" cannot place prefixed ${slot.type} slot for "${sub ? sub.name : slot.subjectCode}" at ${d} Period ${p}. ${collisionDetail}`,
+              failedSectionId: sec.id,
+              failedSectionName: sec.name,
+              failedFacultyId: fId,
+              failedFacultyName: facName,
+              failedSubject: slot.subjectCode,
+              failedSubjectName: sub ? sub.name : slot.subjectCode,
+              failedDay: d,
+              failedPeriod: p,
+            };
           }
         }
 
@@ -345,7 +364,7 @@ function solveSectionWithFastState({
 
         assignedFac.forEach((fId) => {
           if (facultyBusy[fId]) {
-            facultyBusy[fId][d][p] = { sectionId: sec.id, subjectCode: slot.subjectCode };
+            facultyBusy[fId][d][p] = { sectionId: sec.id, subjectCode: slot.subjectCode, isPrefixed: true };
             assignedHistory.push({ day: d, period: p, fId });
           }
         });
@@ -940,6 +959,92 @@ export const detectSchedulingConflicts = ({
     }
   });
 
+  // 3. Prefixed Slots Conflict Analysis (Proactive Gatekeeper)
+  const prefixTracker = {}; // fId -> day -> period -> { secId, secName, subCode, subName }
+
+  targetSections.forEach((sec) => {
+    const secPrefixed = prefixedSlots[sec.id] || {};
+    const secAlloc = allocations[sec.id] || {};
+
+    DAYS.forEach((d) => {
+      const daySlots = secPrefixed[d] || {};
+      for (let p = 1; p <= DAY_PERIODS[d]; p++) {
+        const slot = daySlots[p];
+        if (!slot || !slot.subjectCode) continue;
+
+        const sub = subjects.find((s) => s.code === slot.subjectCode);
+        const alloc = secAlloc[slot.subjectCode] || {};
+        const assignedFac =
+          slot.type === 'lab'
+            ? alloc.labFaculty || []
+            : alloc.theoryFaculty
+            ? [alloc.theoryFaculty]
+            : [];
+
+        assignedFac.forEach((fId) => {
+          const fac = faculty.find((f) => f.id === fId);
+          if (!fac) return;
+
+          // Check if faculty has an external locked slot at this exact day & period
+          const lockedSlot = (fac.lockedSlots || []).find(
+            (ls) => ls.day === d && Number(ls.period) === Number(p)
+          );
+          if (lockedSlot) {
+            conflicts.push({
+              type: 'PREFIX_LOCKED_COLLISION',
+              severity: 'error',
+              sectionId: sec.id,
+              sectionName: sec.name,
+              facultyId: fId,
+              facultyName: fac.name,
+              subjectCode: slot.subjectCode,
+              subjectName: sub ? sub.name : slot.subjectCode,
+              day: d,
+              period: p,
+              lockedDept: lockedSlot.dept || 'External',
+              title: `Prefixed vs Locked Slot Conflict: ${fac.name}`,
+              message: `In "${sec.name}", ${slot.type} subject "${sub ? sub.name : slot.subjectCode}" is prefixed on ${d} Period ${p}, but ${fac.name} is locked in ${lockedSlot.dept || 'External'} department during that hour.`,
+              solution: `Go to Step 5 (Prefix & Tally) and move or remove the prefixed slot, or go to Step 1 (Faculty) to update ${fac.name}'s locked hours.`,
+              step: 5,
+            });
+          }
+
+          // Check if faculty is already prefixed in another section at the exact same day & period
+          if (!prefixTracker[fId]) prefixTracker[fId] = {};
+          if (!prefixTracker[fId][d]) prefixTracker[fId][d] = {};
+          if (prefixTracker[fId][d][p]) {
+            const prev = prefixTracker[fId][d][p];
+            conflicts.push({
+              type: 'CROSS_SECTION_PREFIX_COLLISION',
+              severity: 'error',
+              sectionId: sec.id,
+              sectionName: sec.name,
+              otherSectionId: prev.secId,
+              otherSectionName: prev.secName,
+              facultyId: fId,
+              facultyName: fac.name,
+              subjectCode: slot.subjectCode,
+              subjectName: sub ? sub.name : slot.subjectCode,
+              day: d,
+              period: p,
+              title: `Double-Booked Prefixed Slots: ${fac.name}`,
+              message: `Faculty ${fac.name} is prefixed to teach at the same time (${d} Period ${p}) in both "${sec.name}" and "${prev.secName}".`,
+              solution: `Go to Step 5 (Prefix & Tally) and stagger the prefixed slots across different periods or days.`,
+              step: 5,
+            });
+          } else {
+            prefixTracker[fId][d][p] = {
+              secId: sec.id,
+              secName: sec.name,
+              subCode: slot.subjectCode,
+              subName: sub ? sub.name : slot.subjectCode,
+            };
+          }
+        });
+      }
+    });
+  });
+
   return conflicts;
 };
 
@@ -1045,6 +1150,37 @@ export const generateDepartmentTimetable = ({
     }
   });
 
+  // 3b. Register all immutable prefixed slots for targetSections into baseFacultyBusy
+  for (const sec of targetSections) {
+    const secPrefixed = prefixedSlots[sec.id] || {};
+    const secAlloc = allocations[sec.id] || {};
+    for (const d of DAYS) {
+      const daySlots = secPrefixed[d] || {};
+      for (let p = 1; p <= DAY_PERIODS[d]; p++) {
+        const slot = daySlots[p];
+        if (slot && slot.subjectCode) {
+          const alloc = secAlloc[slot.subjectCode] || {};
+          const assignedFac =
+            slot.type === 'lab'
+              ? alloc.labFaculty || []
+              : alloc.theoryFaculty
+              ? [alloc.theoryFaculty]
+              : [];
+
+          assignedFac.forEach((fId) => {
+            if (baseFacultyBusy[fId]) {
+              baseFacultyBusy[fId][d][p] = {
+                sectionId: sec.id,
+                subjectCode: slot.subjectCode,
+                isPrefixed: true,
+              };
+            }
+          });
+        }
+      }
+    }
+  }
+
   // 4. Section-Oriented CSP Solver with Intelligent Restart & Backjump
   const MAX_RESTARTS = 35;
   let solvedTimetables = null;
@@ -1104,21 +1240,36 @@ export const generateDepartmentTimetable = ({
 
   if (!solvedTimetables) {
     const lastErr = lastAttemptFailure || {};
+    const failedFacObj = lastErr.failedFacultyId
+      ? faculty.find((f) => f.id === lastErr.failedFacultyId)
+      : null;
     return {
       success: false,
       error:
         lastErr.detail ||
+        lastErr.reason ||
         'Scheduling engine encountered a constraint conflict across sections. Please check for excessive Other Department Locked Hours or over-allocated faculty.',
       errorType: 'CONSTRAINT_SATISFACTION_EXHAUSTED',
       diagnostics: {
         category: 'CSP Backtracking Limit',
-        title: 'Constraint Satisfaction Limit Reached',
-        sectionName: lastErr.failedSectionName || 'Unknown Section',
-        subjectName: lastErr.failedSubjectName || lastErr.failedSubject || 'Unknown Subject',
+        title: lastErr.failedSectionName
+          ? `Constraint Conflict in ${lastErr.failedSectionName}`
+          : 'Constraint Satisfaction Limit Reached',
+        sectionId: lastErr.failedSectionId || null,
+        sectionName: lastErr.failedSectionName || 'Selected Section',
+        subjectCode: lastErr.failedSubject || null,
+        subjectName: lastErr.failedSubjectName || lastErr.failedSubject || null,
         facultyId: lastErr.failedFacultyId || null,
+        facultyName: lastErr.failedFacultyName || (failedFacObj ? failedFacObj.name : null),
+        day: lastErr.failedDay || null,
+        period: lastErr.failedPeriod || null,
         reason: lastErr.reason || 'Backtracking limit reached',
-        detail: lastErr.detail || 'Could not find a valid collision-free slot after 35 restarts.',
-        solution: 'Try re-assigning overloaded faculty, reducing locked hours, or generating all years simultaneously.',
+        detail:
+          lastErr.detail ||
+          'Could not find a valid collision-free slot after 35 restarts due to tight faculty workload or locked period constraints.',
+        solution:
+          'Try re-assigning overloaded faculty in Step 4, adjusting prefixed slots in Step 5, or reducing locked hours in Step 1.',
+        step: 4,
       },
       iterations: totalIterations,
     };

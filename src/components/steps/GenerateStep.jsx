@@ -30,6 +30,7 @@ export const GenerateStep = ({
   faculty,
   allocations,
   prefixedSlots,
+  setPrefixedSlots,
   timetables,
   setTimetables,
   setActiveStep,
@@ -37,6 +38,53 @@ export const GenerateStep = ({
   const [selectedScope, setSelectedScope] = useState('all'); // 'all' | 'year-1' | 'year-2' | 'year-3' | 'year-4' | sectionId
   const [isSolving, setIsSolving] = useState(false);
   const [solverResult, setSolverResult] = useState(null);
+
+  // 1-Click Auto-Resolve Conflicting Prefixes
+  const handleAutoResolvePrefixConflicts = () => {
+    if (!setPrefixedSlots) return;
+
+    const copyPrefixed = JSON.parse(JSON.stringify(prefixedSlots || {}));
+    let removedCount = 0;
+
+    targetSections.forEach((sec) => {
+      const secPrefixed = copyPrefixed[sec.id] || {};
+      const secAlloc = allocations[sec.id] || {};
+
+      Object.entries(secPrefixed).forEach(([d, pSlots]) => {
+        Object.entries(pSlots).forEach(([p, slot]) => {
+          if (!slot || !slot.subjectCode) return;
+          const alloc = secAlloc[slot.subjectCode] || {};
+          const assignedFac =
+            slot.type === 'lab'
+              ? alloc.labFaculty || []
+              : alloc.theoryFaculty
+              ? [alloc.theoryFaculty]
+              : [];
+
+          let shouldRemove = false;
+          for (const fId of assignedFac) {
+            const fac = faculty.find((f) => f.id === fId);
+            if (!fac) continue;
+            const hasLocked = (fac.lockedSlots || []).some(
+              (ls) => ls.day === d && Number(ls.period) === Number(p)
+            );
+            if (hasLocked) {
+              shouldRemove = true;
+              break;
+            }
+          }
+
+          if (shouldRemove) {
+            delete secPrefixed[d][p];
+            removedCount++;
+          }
+        });
+      });
+    });
+
+    setPrefixedSlots(copyPrefixed);
+    setSolverResult(null);
+  };
 
   // Compute target sections based on selectedScope
   const getTargetSections = () => {
@@ -284,13 +332,29 @@ export const GenerateStep = ({
             </div>
           )}
 
-          <div className="flex items-center gap-2 pt-1">
+          <div className="flex items-center gap-2 pt-1 flex-wrap">
             <button
-              onClick={() => setActiveStep(4)}
+              onClick={() => setActiveStep(fatalConflicts[0].step || 4)}
               className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs flex items-center gap-1.5"
             >
-              <span>Go to Step 4 (Faculty Mapping) &rarr;</span>
+              <span>
+                {fatalConflicts[0].step === 5
+                  ? 'Go to Step 5 (Prefix & Tally) →'
+                  : fatalConflicts[0].step === 1
+                  ? 'Go to Step 1 (Faculty Management) →'
+                  : 'Go to Step 4 (Faculty Mapping) →'}
+              </span>
             </button>
+
+            {fatalConflicts.some((c) => c.type === 'PREFIX_LOCKED_COLLISION' || c.type === 'CROSS_SECTION_PREFIX_COLLISION') && setPrefixedSlots && (
+              <button
+                onClick={handleAutoResolvePrefixConflicts}
+                className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 text-xs font-semibold shadow-2xs flex items-center gap-1.5"
+              >
+                <Sparkles className="w-3.5 h-3.5 text-rose-600" />
+                <span>1-Click Auto-Resolve Conflicting Prefixes</span>
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -415,11 +479,17 @@ export const GenerateStep = ({
               </button>
             ) : (
               <button
-                onClick={() => setActiveStep(4)}
+                onClick={() => setActiveStep(solverResult.diagnostics?.step || 4)}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-indigo-600 hover:bg-indigo-700 shadow-md shadow-indigo-200 shrink-0"
               >
                 <Wrench className="w-3.5 h-3.5" />
-                <span>Fix in Step 4</span>
+                <span>
+                  {solverResult.diagnostics?.step === 5
+                    ? 'Fix in Step 5'
+                    : solverResult.diagnostics?.step === 1
+                    ? 'Fix in Step 1'
+                    : 'Fix in Step 4'}
+                </span>
               </button>
             )}
           </div>
@@ -446,6 +516,30 @@ export const GenerateStep = ({
                     </div>
                     <span className="text-[10px] text-rose-700 font-medium">
                       {solverResult.diagnostics.requiredHours ? `Demands ${solverResult.diagnostics.requiredHours}h/week` : 'Constraint conflict'}
+                    </span>
+                  </div>
+                )}
+
+                {solverResult.diagnostics.day && solverResult.diagnostics.period && (
+                  <div className="bg-white p-3 rounded-xl border border-rose-200 shadow-2xs">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Conflicting Slot</span>
+                    <div className="font-bold text-slate-900 mt-0.5 text-sm">
+                      {solverResult.diagnostics.day} Period {solverResult.diagnostics.period}
+                    </div>
+                    <span className="text-[10px] text-rose-700 font-medium">
+                      {solverResult.diagnostics.lockedDept ? `Locked in ${solverResult.diagnostics.lockedDept} Dept` : 'Prefixed Collision'}
+                    </span>
+                  </div>
+                )}
+
+                {solverResult.diagnostics.subjectName && (
+                  <div className="bg-white p-3 rounded-xl border border-rose-200 shadow-2xs">
+                    <span className="text-[10px] uppercase font-bold text-slate-500 tracking-wider">Subject</span>
+                    <div className="font-bold text-slate-900 mt-0.5 text-sm truncate" title={solverResult.diagnostics.subjectName}>
+                      {solverResult.diagnostics.subjectName}
+                    </div>
+                    <span className="text-[10px] text-slate-500 font-mono">
+                      {solverResult.diagnostics.subjectCode || 'Curriculum Subject'}
                     </span>
                   </div>
                 )}
@@ -517,14 +611,31 @@ export const GenerateStep = ({
                     {solverResult.diagnostics.solution || 'Reassign some subjects to other faculty members in Step 4 so that no faculty is double-booked.'}
                   </p>
                 </div>
-                <div className="flex items-center gap-2 shrink-0">
+                <div className="flex items-center gap-2 shrink-0 flex-wrap">
                   <button
-                    onClick={() => setActiveStep(4)}
+                    onClick={() => setActiveStep(solverResult.diagnostics.step || 4)}
                     className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold shadow-xs flex items-center gap-1"
                   >
-                    <span>Step 4: Fix Mapping</span>
+                    <span>
+                      {solverResult.diagnostics.step === 5
+                        ? 'Step 5: Adjust Prefixed Slots'
+                        : solverResult.diagnostics.step === 1
+                        ? 'Step 1: Faculty Locked Hours'
+                        : 'Step 4: Fix Faculty Mapping'}
+                    </span>
                     <ArrowRight className="w-3.5 h-3.5" />
                   </button>
+
+                  {(solverResult.errorType === 'PREFIX_LOCKED_COLLISION' || solverResult.errorType === 'CROSS_SECTION_PREFIX_COLLISION') && setPrefixedSlots && (
+                    <button
+                      onClick={handleAutoResolvePrefixConflicts}
+                      className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 text-xs font-semibold shadow-2xs flex items-center gap-1.5"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 text-rose-600" />
+                      <span>Auto-Resolve Conflicting Prefixes</span>
+                    </button>
+                  )}
+
                   {solverResult.diagnostics.existingBookings?.length > 0 && (
                     <button
                       onClick={() => handleClearConflictingTimetables(solverResult.diagnostics.existingBookings)}
