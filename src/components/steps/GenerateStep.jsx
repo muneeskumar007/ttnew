@@ -22,7 +22,7 @@ import {
 } from 'lucide-react';
 import confetti from 'canvas-confetti';
 import { generateDepartmentTimetable, computeSectionTally, detectSchedulingConflicts } from '../../services/scheduler';
-import { YEARS, YEAR_LABELS } from '../../types/constants';
+import { YEARS, YEAR_LABELS, sortSections } from '../../types/constants';
 
 export const GenerateStep = ({
   sections,
@@ -39,14 +39,16 @@ export const GenerateStep = ({
   const [isSolving, setIsSolving] = useState(false);
   const [solverResult, setSolverResult] = useState(null);
 
+  const sortedSections = useMemo(() => sortSections(sections), [sections]);
+
   // Compute target sections based on selectedScope
   const getTargetSections = () => {
-    if (selectedScope === 'all') return sections;
+    if (selectedScope === 'all') return sortedSections;
     if (selectedScope.startsWith('year-')) {
       const yr = parseInt(selectedScope.replace('year-', ''), 10);
-      return sections.filter((s) => s.year === yr);
+      return sortedSections.filter((s) => s.year === yr);
     }
-    return sections.filter((s) => s.id === selectedScope);
+    return sortedSections.filter((s) => s.id === selectedScope);
   };
 
   const targetSections = getTargetSections();
@@ -181,7 +183,7 @@ export const GenerateStep = ({
             className="px-2.5 py-1.5 bg-slate-100 text-slate-700 text-xs font-semibold rounded-xl border border-slate-200 focus:outline-hidden"
           >
             <option value="">Single Section...</option>
-            {sections.map((sec) => (
+            {sortedSections.map((sec) => (
               <option key={sec.id} value={sec.id}>
                 {sec.name}
               </option>

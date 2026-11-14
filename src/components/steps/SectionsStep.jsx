@@ -14,7 +14,7 @@ import {
   AlertTriangle,
   AlertCircle
 } from 'lucide-react';
-import { YEARS, YEAR_LABELS, TOTAL_WEEKLY_PERIODS } from '../../types/constants';
+import { YEARS, YEAR_LABELS, TOTAL_WEEKLY_PERIODS, sortSections } from '../../types/constants';
 
 export const SectionsStep = ({ 
   sections, 
@@ -114,7 +114,7 @@ export const SectionsStep = ({
     };
 
     // 1. Update sections list
-    setSections((prev) => prev.map((s) => (s.id === oldId ? updated : s)));
+    setSections((prev) => sortSections(prev.map((s) => (s.id === oldId ? updated : s))));
 
     // 2. If ID changed, cascade migration to allocations, prefixedSlots, timetables
     if (trimmedNewId !== oldId) {
@@ -193,7 +193,7 @@ export const SectionsStep = ({
       mentorFacultyId: newMentorId || '',
     };
 
-    setSections((prev) => [...prev, newSec]);
+    setSections((prev) => sortSections([...prev, newSec]));
 
     // Initialize blank allocation for this new section with available subjects for this year
     const yearSubjects = subjects.filter((s) => s.year === selectedYear);

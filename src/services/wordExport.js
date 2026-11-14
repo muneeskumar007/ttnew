@@ -1,4 +1,4 @@
-import { DAYS, DAY_PERIODS, getSubjectAcronym } from '../types/constants';
+import { DAYS, DAY_PERIODS, getSubjectAcronym, sortSections } from '../types/constants';
 
 // Helper to extract clean metadata for a section matching user's uploaded template
 const getSectionMeta = (section) => {
@@ -176,7 +176,9 @@ export const exportAllSectionsToWord = (sections, timetables, subjects, faculty)
 
   let docContent = '';
 
-  sections.forEach((section, idx) => {
+  const sorted = sortSections(sections);
+
+  sorted.forEach((section, idx) => {
     const { secLetter, yearSem, roomNo } = getSectionMeta(section);
     const timetable = timetables[section.id] || {};
 

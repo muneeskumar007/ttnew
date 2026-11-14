@@ -1,6 +1,6 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import { DAYS, DAY_PERIODS, getSubjectAcronym } from '../types/constants';
+import { DAYS, DAY_PERIODS, getSubjectAcronym, sortSections } from '../types/constants';
 
 // Helper to extract clean metadata for a section matching user's uploaded template
 const getSectionMeta = (section) => {
@@ -316,7 +316,9 @@ export const exportAllSectionsToPdf = (sections, timetables, subjects, faculty) 
   const facultyMap = Object.fromEntries(faculty.map((f) => [f.id, f]));
   const subjectsMap = Object.fromEntries(subjects.map((s) => [s.code, s]));
 
-  sections.forEach((section, idx) => {
+  const sorted = sortSections(sections);
+
+  sorted.forEach((section, idx) => {
     if (idx > 0) {
       doc.addPage('a4', 'landscape');
     }

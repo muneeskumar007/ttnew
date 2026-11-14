@@ -13,7 +13,7 @@ import {
   ArrowLeftRight,
   Printer
 } from 'lucide-react';
-import { DAYS, DAY_PERIODS, PERIOD_TIMINGS, SUBJECT_PALETTES, getSubjectAcronym } from '../../types/constants';
+import { DAYS, DAY_PERIODS, PERIOD_TIMINGS, SUBJECT_PALETTES, getSubjectAcronym, sortSections } from '../../types/constants';
 import { validateSwap } from '../../services/scheduler';
 
 export const TimetableDisplayStep = ({
@@ -25,13 +25,14 @@ export const TimetableDisplayStep = ({
   prefixedSlots,
   setActiveStep,
 }) => {
-  const [selectedSectionId, setSelectedSectionId] = useState(sections[0]?.id || '');
+  const sortedSections = useMemo(() => sortSections(sections), [sections]);
+  const [selectedSectionId, setSelectedSectionId] = useState(sortedSections[0]?.id || '');
   const [selectedSlotForSwap, setSelectedSlotForSwap] = useState(null); // { day, period }
   const [draggedSlot, setDraggedSlot] = useState(null); // { day, period }
   const [swapAlert, setSwapAlert] = useState(null); // { message, type: 'error' | 'success' }
   const [history, setHistory] = useState([]); // For Undo
 
-  const activeSection = sections.find((s) => s.id === selectedSectionId) || sections[0];
+  const activeSection = sortedSections.find((s) => s.id === selectedSectionId) || sortedSections[0];
   const activeTimetable = timetables[activeSection?.id] || {};
   const facultyMap = Object.fromEntries(faculty.map((f) => [f.id, f]));
   const subjectsMap = Object.fromEntries(subjects.map((s) => [s.code, s]));
@@ -298,7 +299,7 @@ export const TimetableDisplayStep = ({
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5 flex-1">
-              {sections.map((sec) => (
+              {sortedSections.map((sec) => (
                 <button
                   key={sec.id}
                   onClick={() => {

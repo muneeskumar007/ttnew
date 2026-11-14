@@ -1,5 +1,5 @@
 import * as XLSX from 'xlsx';
-import { DAYS, DAY_PERIODS, PERIOD_TIMINGS, getSubjectAcronym } from '../types/constants';
+import { DAYS, DAY_PERIODS, PERIOD_TIMINGS, getSubjectAcronym, sortSections } from '../types/constants';
 
 // Format cell text
 const getSlotDisplay = (slot, facultyMap, subjectsMap) => {
@@ -78,7 +78,9 @@ export const exportMasterGridToExcel = (sections, timetables, subjects, faculty)
   const subjectsMap = Object.fromEntries(subjects.map((s) => [s.code, s]));
   const wb = XLSX.utils.book_new();
 
-  sections.forEach((sec) => {
+  const sorted = sortSections(sections);
+
+  sorted.forEach((sec) => {
     const timetable = timetables[sec.id] || {};
     const rows = [
       [`MASTER SCHEDULE - ${sec.name.toUpperCase()}`],

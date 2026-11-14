@@ -36,6 +36,7 @@ import {
 } from './services/firebase';
 
 import { generateDepartmentTimetable } from './services/scheduler';
+import { sortSections } from './types/constants';
 import { ArrowLeft, ArrowRight, Cloud, RefreshCw, ExternalLink, AlertCircle, CheckCircle2 } from 'lucide-react';
 
 export function App() {
@@ -43,7 +44,7 @@ export function App() {
   const [department, setDepartment] = useState(INITIAL_DEPARTMENT);
   const [faculty, setFaculty] = useState(INITIAL_FACULTY);
   const [subjects, setSubjects] = useState(INITIAL_SUBJECTS);
-  const [sections, setSections] = useState(INITIAL_SECTIONS);
+  const [sections, setSections] = useState(() => sortSections(INITIAL_SECTIONS));
   const [allocations, setAllocations] = useState(INITIAL_ALLOCATIONS);
   const [prefixedSlots, setPrefixedSlots] = useState(INITIAL_PREFIXED_SLOTS);
   const [timetables, setTimetables] = useState({});
@@ -71,7 +72,7 @@ export function App() {
         setDepartment(res.data.department || INITIAL_DEPARTMENT);
         setFaculty(res.data.faculty || []);
         setSubjects(res.data.subjects || []);
-        setSections(res.data.sections || []);
+        setSections(sortSections(res.data.sections || []));
         setAllocations(res.data.allocations || {});
         setPrefixedSlots(res.data.prefixedSlots || {});
         setTimetables(res.data.timetables || {});
@@ -110,7 +111,7 @@ export function App() {
         department,
         faculty,
         subjects,
-        sections,
+        sections: sortSections(sections),
         allocations,
         prefixedSlots,
         timetables,
@@ -138,7 +139,7 @@ export function App() {
       department,
       faculty,
       subjects,
-      sections,
+      sections: sortSections(sections),
       allocations,
       prefixedSlots,
       timetables,

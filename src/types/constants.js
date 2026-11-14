@@ -64,6 +64,30 @@ export const STEP_NAMES = [
 ];
 
 /**
+ * Sorts class sections by academic Year ascending, then by Section letter / name ascending.
+ * Result ordering:
+ * Year 2 - Section A, Year 2 - Section B, Year 2 - Section C,
+ * Year 3 - Section A, Year 3 - Section B, Year 3 - Section C,
+ * Year 4 - Section A, Year 4 - Section B, Year 4 - Section C
+ */
+export const sortSections = (sectionsList = []) => {
+  if (!Array.isArray(sectionsList)) return [];
+  return [...sectionsList].sort((a, b) => {
+    const yearA = Number(a?.year) || 0;
+    const yearB = Number(b?.year) || 0;
+    if (yearA !== yearB) return yearA - yearB;
+
+    const nameA = String(a?.name || a?.id || '').trim();
+    const nameB = String(b?.name || b?.id || '').trim();
+
+    return nameA.localeCompare(nameB, undefined, {
+      numeric: true,
+      sensitivity: 'base',
+    });
+  });
+};
+
+/**
  * Generates clean subject acronyms from subject names:
  * E.g. "Data Structures" -> "DS"
  * E.g. "Object Oriented Programming" -> "OOP"

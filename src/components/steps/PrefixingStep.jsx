@@ -17,7 +17,7 @@ import {
   Beaker,
   Layers
 } from 'lucide-react';
-import { DAYS, DAY_PERIODS, PERIOD_TIMINGS, TOTAL_WEEKLY_PERIODS, SUBJECT_PALETTES, getSubjectAcronym } from '../../types/constants';
+import { DAYS, DAY_PERIODS, PERIOD_TIMINGS, TOTAL_WEEKLY_PERIODS, SUBJECT_PALETTES, getSubjectAcronym, sortSections } from '../../types/constants';
 import { 
   computeSectionTally, 
   isFacultyBusy,
@@ -35,10 +35,11 @@ export const PrefixingStep = ({
   setPrefixedSlots,
   setActiveStep,
 }) => {
-  const [selectedSectionId, setSelectedSectionId] = useState(sections[0]?.id || '');
+  const sortedSections = useMemo(() => sortSections(sections), [sections]);
+  const [selectedSectionId, setSelectedSectionId] = useState(sortedSections[0]?.id || '');
   const [modalSlot, setModalSlot] = useState(null); // { day, period }
 
-  const activeSection = sections.find((s) => s.id === selectedSectionId) || sections[0];
+  const activeSection = sortedSections.find((s) => s.id === selectedSectionId) || sortedSections[0];
   const secAlloc = (activeSection && allocations[activeSection.id]) || {};
   const secPrefixed = (activeSection && prefixedSlots[activeSection.id]) || {};
 
@@ -265,7 +266,7 @@ export const PrefixingStep = ({
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5 flex-1">
-              {sections.map((sec) => (
+              {sortedSections.map((sec) => (
                 <button
                   key={sec.id}
                   onClick={() => setSelectedSectionId(sec.id)}

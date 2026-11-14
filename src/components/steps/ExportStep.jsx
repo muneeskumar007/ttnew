@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Download, 
   FileSpreadsheet, 
@@ -33,7 +33,7 @@ import {
   exportAllSectionsToWord,
   exportAllFacultyToWord
 } from '../../services/wordExport';
-import { DAYS, DAY_PERIODS } from '../../types/constants';
+import { DAYS, DAY_PERIODS, sortSections } from '../../types/constants';
 
 export const ExportStep = ({
   sections,
@@ -42,28 +42,29 @@ export const ExportStep = ({
   timetables,
   setActiveStep,
 }) => {
-  const [selectedSectionId, setSelectedSectionId] = useState(sections[0]?.id || '');
+  const sortedSections = useMemo(() => sortSections(sections), [sections]);
+  const [selectedSectionId, setSelectedSectionId] = useState(sortedSections[0]?.id || '');
   const [selectedFacultyId, setSelectedFacultyId] = useState(faculty[0]?.id || '');
   const [reportDay, setReportDay] = useState('Monday');
   const [reportPeriod, setReportPeriod] = useState(2);
   const [showSingleSection, setShowSingleSection] = useState(false);
   const [showSingleFaculty, setShowSingleFaculty] = useState(false);
 
-  const activeSection = sections.find((s) => s.id === selectedSectionId) || sections[0];
+  const activeSection = sortedSections.find((s) => s.id === selectedSectionId) || sortedSections[0];
   const activeTimetable = timetables[activeSection?.id] || {};
   const activeFaculty = faculty.find((f) => f.id === selectedFacultyId) || faculty[0];
 
   // 1. Overall All Sections Handlers (Single-click)
   const handleExportAllSectionsPdf = () => {
-    exportAllSectionsToPdf(sections, timetables, subjects, faculty);
+    exportAllSectionsToPdf(sortedSections, timetables, subjects, faculty);
   };
 
   const handleExportAllSectionsWord = () => {
-    exportAllSectionsToWord(sections, timetables, subjects, faculty);
+    exportAllSectionsToWord(sortedSections, timetables, subjects, faculty);
   };
 
   const handleExportMasterExcel = () => {
-    exportMasterGridToExcel(sections, timetables, subjects, faculty);
+    exportMasterGridToExcel(sortedSections, timetables, subjects, faculty);
   };
 
   // 2. Overall All Faculty Handlers (Single-click)
@@ -295,7 +296,7 @@ export const ExportStep = ({
                     onChange={(e) => setSelectedSectionId(e.target.value)}
                     className="w-full text-xs p-2 bg-white border border-slate-200 rounded-lg font-medium text-slate-800"
                   >
-                    {sections.map((s) => (
+                    {sortedSections.map((s) => (
                       <option key={s.id} value={s.id}>
                         {s.name} (Year {s.year})
                       </option>

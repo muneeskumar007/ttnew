@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   UserCheck, 
   Users, 
@@ -8,13 +8,13 @@ import {
   CheckCircle2, 
   Clock, 
   Plus, 
-  X,
-  Lock,
-  Maximize2,
-  Minimize2,
-  Layers
+  X, 
+  Lock, 
+  Maximize2, 
+  Minimize2, 
+  Layers 
 } from 'lucide-react';
-import { SUBJECT_PALETTES } from '../../types/constants';
+import { SUBJECT_PALETTES, sortSections } from '../../types/constants';
 
 export const AllocationStep = ({
   sections,
@@ -24,10 +24,11 @@ export const AllocationStep = ({
   setAllocations,
   setActiveStep,
 }) => {
-  const [selectedSectionId, setSelectedSectionId] = useState(sections[0]?.id || '');
+  const sortedSections = useMemo(() => sortSections(sections), [sections]);
+  const [selectedSectionId, setSelectedSectionId] = useState(sortedSections[0]?.id || '');
   const [isExpandedView, setIsExpandedView] = useState(false);
 
-  const activeSection = sections.find((s) => s.id === selectedSectionId) || sections[0];
+  const activeSection = sortedSections.find((s) => s.id === selectedSectionId) || sortedSections[0];
   const sectionAlloc = (activeSection && allocations[activeSection.id]) || {};
 
   // Subjects applicable to the active section's year
@@ -149,7 +150,7 @@ export const AllocationStep = ({
         </div>
 
         {/* Section Switcher Tabs */}
-        {sections.length > 0 && (
+        {sortedSections.length > 0 && (
           <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row sm:items-center gap-3">
             <div className="flex items-center gap-1.5 text-xs font-bold text-slate-700 shrink-0">
               <Layers className="w-4 h-4 text-indigo-600" />
@@ -157,7 +158,7 @@ export const AllocationStep = ({
             </div>
 
             <div className="flex flex-wrap items-center gap-1.5 flex-1">
-              {sections.map((sec) => (
+              {sortedSections.map((sec) => (
                 <button
                   key={sec.id}
                   onClick={() => setSelectedSectionId(sec.id)}
