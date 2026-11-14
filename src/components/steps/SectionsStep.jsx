@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Layers, 
   Plus, 
@@ -10,7 +10,9 @@ import {
   CalendarDays,
   Edit3,
   X,
-  Check
+  Check,
+  AlertTriangle,
+  AlertCircle
 } from 'lucide-react';
 import { YEARS, YEAR_LABELS, TOTAL_WEEKLY_PERIODS } from '../../types/constants';
 
@@ -39,6 +41,29 @@ export const SectionsStep = ({
 
   const facultyMap = Object.fromEntries(faculty.map((f) => [f.id, f]));
 
+  // Map of mentorFacultyId -> array of sections that currently have this faculty as tutor
+  const tutorAssignments = useMemo(() => {
+    const map = {};
+    sections.forEach((sec) => {
+      if (sec.mentorFacultyId) {
+        if (!map[sec.mentorFacultyId]) map[sec.mentorFacultyId] = [];
+        map[sec.mentorFacultyId].push(sec);
+      }
+    });
+    return map;
+  }, [sections]);
+
+  // List of duplicates in current state (if any already exist in data)
+  const duplicateTutorConflicts = useMemo(() => {
+    return Object.entries(tutorAssignments)
+      .filter(([_, secs]) => secs.length > 1)
+      .map(([fId, secs]) => ({
+        facultyId: fId,
+        facultyName: facultyMap[fId]?.name || fId,
+        sections: secs,
+      }));
+  }, [tutorAssignments, facultyMap]);
+
   // Open Edit Modal
   const handleOpenEdit = (sec) => {
     setEditingSection(sec);
@@ -64,6 +89,20 @@ export const SectionsStep = ({
     if (trimmedNewId !== oldId && sections.some((s) => s.id === trimmedNewId)) {
       alert(`Section ID "${trimmedNewId}" is already in use by another section. Please choose a unique ID.`);
       return;
+    }
+
+    // Check unique class tutor rule
+    if (editMentorId) {
+      const alreadyAssignedSec = sections.find(
+        (s) => s.id !== editingSection.id && s.mentorFacultyId === editMentorId
+      );
+      if (alreadyAssignedSec) {
+        const facName = facultyMap[editMentorId]?.name || editMentorId;
+        alert(
+          `Cannot Assign Class Tutor!\n\nFaculty "${facName}" is already locked as Class Tutor for "${alreadyAssignedSec.name}" (Year ${alreadyAssignedSec.year}).\n\nA faculty member can only be assigned as Class Tutor to ONE section across all years.`
+        );
+        return;
+      }
     }
 
     const updated = {
@@ -135,11 +174,23 @@ export const SectionsStep = ({
       return;
     }
 
+    // Check unique class tutor rule
+    if (newMentorId) {
+      const alreadyAssignedSec = sections.find((s) => s.mentorFacultyId === newMentorId);
+      if (alreadyAssignedSec) {
+        const facName = facultyMap[newMentorId]?.name || newMentorId;
+        alert(
+          `Cannot Assign Class Tutor!\n\nFaculty "${facName}" is already locked as Class Tutor for "${alreadyAssignedSec.name}" (Year ${alreadyAssignedSec.year}).\n\nPlease select an unassigned faculty or leave as "Select Mentor (Optional)...".`
+        );
+        return;
+      }
+    }
+
     const newSec = {
       id: secId,
       year: selectedYear,
       name: `Year ${selectedYear} - Section ${cleanLetter}`,
-      mentorFacultyId: newMentorId || (faculty[0]?.id || ''),
+      mentorFacultyId: newMentorId || '',
     };
 
     setSections((prev) => [...prev, newSec]);
@@ -190,8 +241,21 @@ export const SectionsStep = ({
     }
   };
 
-  // Update Mentor
+  // Update Mentor with single-tutor check
   const handleUpdateMentor = (sectionId, mentorId) => {
+    if (mentorId) {
+      const alreadyAssignedSec = sections.find(
+        (s) => s.id !== sectionId && s.mentorFacultyId === mentorId
+      );
+      if (alreadyAssignedSec) {
+        const facName = facultyMap[mentorId]?.name || mentorId;
+        alert(
+          `Cannot Assign Class Tutor!\n\nFaculty "${facName}" is already locked as Class Tutor for "${alreadyAssignedSec.name}" (Year ${alreadyAssignedSec.year}).\n\nA faculty member can only be assigned as Class Tutor to ONE section across all years.`
+        );
+        return;
+      }
+    }
+
     setSections((prev) =>
       prev.map((s) => (s.id === sectionId ? { ...s, mentorFacultyId: mentorId } : s))
     );
@@ -209,7 +273,7 @@ export const SectionsStep = ({
             </span>
           </div>
           <p className="text-xs text-slate-500 mt-1">
-            Configure classes and sections per year. Assign a designated Class Tutor / Mentor to each section.
+            Configure classes and sections per year. Assign a designated Class Tutor / Mentor to each section (1 faculty per section).
           </p>
         </div>
 
@@ -231,6 +295,54 @@ export const SectionsStep = ({
         </div>
       </div>
 
+      {/* Duplicate Class Tutor Warning Banner */}
+      {duplicateTutorConflicts.length > 0 && (
+        <div className="bg-rose-50 border-2 border-rose-300 rounded-2xl p-5 shadow-xs space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-rose-200">
+              <AlertTriangle className="w-5 h-5" />
+            </div>
+            <div className="flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-bold text-rose-950 uppercase tracking-wide">
+                  Duplicate Class Tutor Detected ({duplicateTutorConflicts.length})
+                </span>
+                <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-rose-200 text-rose-900">
+                  Strict Rule: 1 Tutor Per Section
+                </span>
+              </div>
+              <p className="text-xs text-rose-800 mt-1">
+                A faculty member can only serve as Class Tutor for <strong>one section</strong> across all years and sections. 
+                Please reassign one of the sections below so each section has an independent tutor.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2 pt-2 border-t border-rose-200/80">
+            {duplicateTutorConflicts.map((dup) => (
+              <div 
+                key={dup.facultyId}
+                className="bg-white p-3 rounded-xl border border-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs"
+              >
+                <div>
+                  <div className="text-xs">
+                    <strong className="text-slate-900">{dup.facultyName}</strong>
+                    <span className="text-rose-700 ml-1 font-medium">is currently assigned as tutor to multiple sections:</span>
+                  </div>
+                  <div className="flex flex-wrap gap-1.5 mt-1.5">
+                    {dup.sections.map((s) => (
+                      <span key={s.id} className="text-[11px] font-semibold bg-rose-50 text-rose-800 px-2.5 py-0.5 rounded-lg border border-rose-200">
+                        {s.name} (Year {s.year})
+                      </span>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Grid: Sections for current selected year + Add section form */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Left: Section Cards for selected year */}
@@ -250,6 +362,7 @@ export const SectionsStep = ({
               .filter((s) => s.year === selectedYear)
               .map((sec) => {
                 const mentor = facultyMap[sec.mentorFacultyId];
+                const isDuplicateTutor = (tutorAssignments[sec.mentorFacultyId]?.length || 0) > 1;
                 const yearSubjects = subjects.filter((s) => s.year === sec.year);
                 const totalHours = yearSubjects.reduce(
                   (acc, s) => acc + (s.theoryHours || 0) + (s.labHours || 0),
@@ -303,23 +416,57 @@ export const SectionsStep = ({
 
                     {/* Mentor Configuration */}
                     <div className="mt-4 pt-4 border-t border-slate-100">
-                      <label className="block text-[11px] font-semibold text-slate-500 uppercase tracking-wider mb-1 flex items-center gap-1.5">
-                        <Award className="w-3.5 h-3.5 text-amber-500" />
-                        <span>Class Tutor / Mentor</span>
-                      </label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider flex items-center gap-1.5">
+                          <Award className="w-3.5 h-3.5 text-amber-500" />
+                          <span>Class Tutor / Mentor</span>
+                        </label>
+                        {isDuplicateTutor && (
+                          <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-1.5 py-0.5 rounded flex items-center gap-0.5">
+                            <AlertCircle className="w-2.5 h-2.5" />
+                            Duplicate Tutor
+                          </span>
+                        )}
+                      </div>
                       <select
                         value={sec.mentorFacultyId || ''}
                         onChange={(e) => handleUpdateMentor(sec.id, e.target.value)}
-                        className="w-full text-xs p-2 bg-slate-50 border border-slate-200 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500"
+                        className={`w-full text-xs p-2 rounded-xl font-medium focus:ring-2 focus:ring-indigo-500 border transition-all ${
+                          isDuplicateTutor
+                            ? 'bg-rose-50 border-rose-300 text-rose-950 font-semibold'
+                            : 'bg-slate-50 border-slate-200 text-slate-800'
+                        }`}
                       >
                         <option value="">Select Mentor Faculty...</option>
-                        {faculty.map((f) => (
-                          <option key={f.id} value={f.id}>
-                            {f.name} ({f.department})
-                          </option>
-                        ))}
+                        {faculty.map((f) => {
+                          const assignedSec = sections.find(
+                            (s) => s.id !== sec.id && s.mentorFacultyId === f.id
+                          );
+                          return (
+                            <option
+                              key={f.id}
+                              value={f.id}
+                              disabled={Boolean(assignedSec)}
+                              className={assignedSec ? 'text-slate-400 bg-slate-100' : ''}
+                            >
+                              {f.name} ({f.department}){assignedSec ? ` — Assigned to ${assignedSec.name} (Year ${assignedSec.year})` : ''}
+                            </option>
+                          );
+                        })}
                       </select>
-                      {mentor && (
+                      {isDuplicateTutor && (
+                        <p className="text-[10px] text-rose-700 bg-rose-50 rounded-md p-1.5 mt-2 flex items-center gap-1 font-semibold border border-rose-200">
+                          <AlertCircle className="w-3 h-3 text-rose-600 shrink-0" />
+                          <span>
+                            Collision: {mentor?.name} is also assigned to{' '}
+                            {tutorAssignments[sec.mentorFacultyId]
+                              .filter((s) => s.id !== sec.id)
+                              .map((s) => s.name)
+                              .join(', ')}. Please reassign one.
+                          </span>
+                        </p>
+                      )}
+                      {!isDuplicateTutor && mentor && (
                         <p className="text-[10px] text-amber-700 bg-amber-50 rounded-md p-1.5 mt-2 flex items-center gap-1 font-medium border border-amber-200">
                           <Sparkles className="w-3 h-3 text-amber-500 shrink-0" />
                           <span>Tutor Hour eligible for gold halo styling in timetable.</span>
@@ -384,20 +531,31 @@ export const SectionsStep = ({
 
             <div>
               <label className="block text-xs font-semibold text-slate-700 mb-1">
-                Assign Class Tutor / Mentor
+                Assign Class Tutor / Mentor (Optional)
               </label>
               <select
                 value={newMentorId}
                 onChange={(e) => setNewMentorId(e.target.value)}
                 className="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-xl focus:ring-2 focus:ring-indigo-500"
               >
-                <option value="">Select Mentor...</option>
-                {faculty.map((f) => (
-                  <option key={f.id} value={f.id}>
-                    {f.name} ({f.department})
-                  </option>
-                ))}
+                <option value="">Select Mentor (Optional)...</option>
+                {faculty.map((f) => {
+                  const assignedSec = sections.find((s) => s.mentorFacultyId === f.id);
+                  return (
+                    <option
+                      key={f.id}
+                      value={f.id}
+                      disabled={Boolean(assignedSec)}
+                      className={assignedSec ? 'text-slate-400 bg-slate-100' : ''}
+                    >
+                      {f.name} ({f.department}){assignedSec ? ` — Assigned to ${assignedSec.name} (Year ${assignedSec.year})` : ''}
+                    </option>
+                  );
+                })}
               </select>
+              <p className="text-[10px] text-slate-400 mt-1">
+                A faculty can only be assigned to one section across all years.
+              </p>
             </div>
 
             <button
@@ -503,12 +661,25 @@ export const SectionsStep = ({
                   className="w-full text-xs p-2.5 bg-slate-50 border border-slate-300 rounded-xl font-medium text-slate-800 focus:ring-2 focus:ring-indigo-500"
                 >
                   <option value="">Select Mentor Faculty...</option>
-                  {faculty.map((f) => (
-                    <option key={f.id} value={f.id}>
-                      {f.name} ({f.department})
-                    </option>
-                  ))}
+                  {faculty.map((f) => {
+                    const assignedSec = sections.find(
+                      (s) => s.id !== editingSection?.id && s.mentorFacultyId === f.id
+                    );
+                    return (
+                      <option
+                        key={f.id}
+                        value={f.id}
+                        disabled={Boolean(assignedSec)}
+                        className={assignedSec ? 'text-slate-400 bg-slate-100' : ''}
+                      >
+                        {f.name} ({f.department}){assignedSec ? ` — Assigned to ${assignedSec.name} (Year ${assignedSec.year})` : ''}
+                      </option>
+                    );
+                  })}
                 </select>
+                <p className="text-[10px] text-slate-400 mt-1">
+                  Each faculty can only be assigned to one section across all years.
+                </p>
               </div>
 
               <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
