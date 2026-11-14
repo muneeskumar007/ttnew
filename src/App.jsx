@@ -35,7 +35,7 @@ import {
   getFirebaseConfig,
 } from './services/firebase';
 
-import { generateDepartmentTimetable } from './services/scheduler';
+import { generateDepartmentTimetable, sanitizeAllocations } from './services/scheduler';
 import { sortSections } from './types/constants';
 import { ArrowLeft, ArrowRight, Cloud, RefreshCw, ExternalLink, AlertCircle, CheckCircle2 } from 'lucide-react';
 
@@ -73,7 +73,7 @@ export function App() {
         setFaculty(res.data.faculty || []);
         setSubjects(res.data.subjects || []);
         setSections(sortSections(res.data.sections || []));
-        setAllocations(res.data.allocations || {});
+        setAllocations(sanitizeAllocations(res.data.allocations || {}, res.data.subjects || []));
         setPrefixedSlots(res.data.prefixedSlots || {});
         setTimetables(res.data.timetables || {});
         setSyncStatus('synced');

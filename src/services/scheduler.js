@@ -130,20 +130,37 @@ export const isFacultyBusy = (
   return { busy: false };
 };
 
-// Extract all faculty IDs assigned to a subject allocation (theory + lab)
-export const getSubjectAssignedFaculty = (alloc) => {
+// Extract assigned faculty IDs for an allocation, respecting subject type and slot type:
+// - If slotType === 'lab': ONLY labFaculty (theoryFaculty is strictly excluded)
+// - If slotType === 'theory': ONLY theoryFaculty (labFaculty is strictly excluded)
+// - If slotType is omitted: includes theoryFaculty ONLY if sub.theoryHours > 0 (or sub omitted)
+//                           and labFaculty ONLY if sub.labHours > 0 (or sub omitted)
+export const getSubjectAssignedFaculty = (alloc, sub = null, slotType = null) => {
   if (!alloc) return [];
   const facs = [];
-  if (alloc.theoryFaculty && !facs.includes(alloc.theoryFaculty)) {
-    facs.push(alloc.theoryFaculty);
+
+  const isPureLab = sub && (sub.theoryHours || 0) === 0 && (sub.labHours || 0) > 0;
+  const isPureTheory = sub && (sub.labHours || 0) === 0 && (sub.theoryHours || 0) > 0;
+
+  const shouldCheckTheory = slotType ? slotType === 'theory' : !isPureLab;
+  const shouldCheckLab = slotType ? slotType === 'lab' : !isPureTheory;
+
+  if (shouldCheckTheory && alloc.theoryFaculty && (!sub || (sub.theoryHours || 0) > 0)) {
+    if (!facs.includes(alloc.theoryFaculty)) {
+      facs.push(alloc.theoryFaculty);
+    }
   }
-  if (Array.isArray(alloc.labFaculty)) {
-    alloc.labFaculty.forEach((fId) => {
-      if (fId && !facs.includes(fId)) facs.push(fId);
-    });
-  } else if (alloc.labFaculty && !facs.includes(alloc.labFaculty)) {
-    facs.push(alloc.labFaculty);
+
+  if (shouldCheckLab && (!sub || (sub.labHours || 0) > 0)) {
+    if (Array.isArray(alloc.labFaculty)) {
+      alloc.labFaculty.forEach((fId) => {
+        if (fId && !facs.includes(fId)) facs.push(fId);
+      });
+    } else if (alloc.labFaculty && !facs.includes(alloc.labFaculty)) {
+      facs.push(alloc.labFaculty);
+    }
   }
+
   return facs;
 };
 
@@ -158,13 +175,16 @@ export const checkPrefixSlotCollisions = ({
   allFaculty = [],
   sections = [],
   subjects = [],
+  slotType = null, // 'lab' | 'theory'
 }) => {
   const secAlloc = allocations[sectionId] || {};
   const alloc = secAlloc[subjectCode];
-  const assignedFacIds = getSubjectAssignedFaculty(alloc);
+  const sub = subjects.find((s) => s.code === subjectCode);
+
+  const candidateSlotType = slotType || (periodsToLock.length > 1 || (sub && sub.theoryHours === 0 && sub.labHours > 0) ? 'lab' : 'theory');
+  const assignedFacIds = getSubjectAssignedFaculty(alloc, sub, candidateSlotType);
   const collisions = [];
 
-  const sub = subjects.find((s) => s.code === subjectCode);
   const subName = sub?.name || subjectCode;
 
   for (const facId of assignedFacIds) {
@@ -197,7 +217,14 @@ export const checkPrefixSlotCollisions = ({
         const otherSlot = otherGrid[day]?.[p];
         if (otherSlot && otherSlot.subjectCode) {
           const otherSecAlloc = allocations[otherSecId] || {};
-          const otherFacs = getSubjectAssignedFaculty(otherSecAlloc[otherSlot.subjectCode]);
+          const otherSub = subjects.find((s) => s.code === otherSlot.subjectCode);
+          const otherSlotType = otherSlot.type || (otherSlot.labBlockId ? 'lab' : 'theory');
+          const otherFacs = getSubjectAssignedFaculty(
+            otherSecAlloc[otherSlot.subjectCode],
+            otherSub,
+            otherSlotType
+          );
+
           if (otherFacs.includes(facId)) {
             const otherSecName = sections.find((s) => s.id === otherSecId)?.name || otherSecId;
             collisions.push({
@@ -246,7 +273,8 @@ export const scanExistingPrefixCollisions = ({
 
         const sub = subjects.find((s) => s.code === slot.subjectCode);
         const alloc = secAlloc[slot.subjectCode];
-        const assignedFac = getSubjectAssignedFaculty(alloc);
+        const slotType = slot.type || (slot.labBlockId ? 'lab' : 'theory');
+        const assignedFac = getSubjectAssignedFaculty(alloc, sub, slotType);
 
         assignedFac.forEach((fId) => {
           const fac = faculty.find((f) => f.id === fId);
@@ -1557,4 +1585,27 @@ export const validateSwap = ({
   }
 
   return { allowed: true };
+};
+
+// Clean any leftover theoryFaculty on pure lab subjects or labFaculty on pure theory subjects
+export const sanitizeAllocations = (allocations = {}, subjects = []) => {
+  if (!allocations) return {};
+  const cleaned = JSON.parse(JSON.stringify(allocations));
+  const subMap = Object.fromEntries((subjects || []).map((s) => [s.code, s]));
+
+  Object.keys(cleaned).forEach((secId) => {
+    const secAlloc = cleaned[secId] || {};
+    Object.keys(secAlloc).forEach((code) => {
+      const sub = subMap[code];
+      if (!sub) return;
+      if ((sub.theoryHours || 0) === 0 && secAlloc[code]?.theoryFaculty) {
+        secAlloc[code].theoryFaculty = null;
+      }
+      if ((sub.labHours || 0) === 0 && Array.isArray(secAlloc[code]?.labFaculty) && secAlloc[code].labFaculty.length > 0) {
+        secAlloc[code].labFaculty = [];
+      }
+    });
+  });
+
+  return cleaned;
 };

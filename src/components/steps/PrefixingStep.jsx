@@ -104,6 +104,7 @@ export const PrefixingStep = ({
       allFaculty: faculty,
       sections,
       subjects,
+      slotType: 'theory',
     });
 
     if (!check.allowed) {
@@ -177,6 +178,7 @@ export const PrefixingStep = ({
       allFaculty: faculty,
       sections,
       subjects,
+      slotType: 'lab',
     });
 
     if (!check.allowed) {
@@ -778,6 +780,7 @@ export const PrefixingStep = ({
                         allFaculty: faculty,
                         sections,
                         subjects,
+                        slotType: 'theory',
                       });
 
                       return (
@@ -861,6 +864,7 @@ export const PrefixingStep = ({
                         allFaculty: faculty,
                         sections,
                         subjects,
+                        slotType: 'lab',
                       });
 
                       return (

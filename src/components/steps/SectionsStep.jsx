@@ -200,7 +200,7 @@ export const SectionsStep = ({
     const newSecAlloc = {};
     yearSubjects.forEach((sub) => {
       newSecAlloc[sub.code] = {
-        theoryFaculty: faculty[0]?.id || null,
+        theoryFaculty: sub.theoryHours > 0 ? (faculty[0]?.id || null) : null,
         labFaculty: sub.labHours > 0 ? [faculty[0]?.id || ''] : [],
       };
     });
