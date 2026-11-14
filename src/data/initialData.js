@@ -107,7 +107,7 @@ export const DEMO_FACULTY = [
 ];
 
 export const DEMO_SUBJECTS = [
-  // 2nd Year (B.Tech) - Exactly 39 Hours: 27 Theory + 12 Lab
+  // 2nd Year (B.E.) - Exactly 39 Hours: 27 Theory + 12 Lab
   {
     code: 'CS201',
     name: 'Data Structures & Algorithms',

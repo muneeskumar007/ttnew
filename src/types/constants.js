@@ -28,10 +28,10 @@ export const PERIOD_TIMINGS = [
 export const YEARS = [1, 2, 3, 4];
 
 export const YEAR_LABELS = {
-  1: '1st Year (B.Tech)',
-  2: '2nd Year (B.Tech)',
-  3: '3rd Year (B.Tech)',
-  4: '4th Year (B.Tech)'
+  1: '1st Year (B.E.)',
+  2: '2nd Year (B.E.)',
+  3: '3rd Year (B.E.)',
+  4: '4th Year (B.E.)'
 };
 
 // Vibrant, distinct color palettes for subjects (Same subject = same background tint + 2px solid border)
