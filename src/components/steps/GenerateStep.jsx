@@ -39,53 +39,6 @@ export const GenerateStep = ({
   const [isSolving, setIsSolving] = useState(false);
   const [solverResult, setSolverResult] = useState(null);
 
-  // 1-Click Auto-Resolve Conflicting Prefixes
-  const handleAutoResolvePrefixConflicts = () => {
-    if (!setPrefixedSlots) return;
-
-    const copyPrefixed = JSON.parse(JSON.stringify(prefixedSlots || {}));
-    let removedCount = 0;
-
-    targetSections.forEach((sec) => {
-      const secPrefixed = copyPrefixed[sec.id] || {};
-      const secAlloc = allocations[sec.id] || {};
-
-      Object.entries(secPrefixed).forEach(([d, pSlots]) => {
-        Object.entries(pSlots).forEach(([p, slot]) => {
-          if (!slot || !slot.subjectCode) return;
-          const alloc = secAlloc[slot.subjectCode] || {};
-          const assignedFac =
-            slot.type === 'lab'
-              ? alloc.labFaculty || []
-              : alloc.theoryFaculty
-              ? [alloc.theoryFaculty]
-              : [];
-
-          let shouldRemove = false;
-          for (const fId of assignedFac) {
-            const fac = faculty.find((f) => f.id === fId);
-            if (!fac) continue;
-            const hasLocked = (fac.lockedSlots || []).some(
-              (ls) => ls.day === d && Number(ls.period) === Number(p)
-            );
-            if (hasLocked) {
-              shouldRemove = true;
-              break;
-            }
-          }
-
-          if (shouldRemove) {
-            delete secPrefixed[d][p];
-            removedCount++;
-          }
-        });
-      });
-    });
-
-    setPrefixedSlots(copyPrefixed);
-    setSolverResult(null);
-  };
-
   // Compute target sections based on selectedScope
   const getTargetSections = () => {
     if (selectedScope === 'all') return sections;
@@ -346,14 +299,10 @@ export const GenerateStep = ({
               </span>
             </button>
 
-            {fatalConflicts.some((c) => c.type === 'PREFIX_LOCKED_COLLISION' || c.type === 'CROSS_SECTION_PREFIX_COLLISION') && setPrefixedSlots && (
-              <button
-                onClick={handleAutoResolvePrefixConflicts}
-                className="px-3.5 py-1.5 rounded-xl bg-white hover:bg-rose-50 text-rose-700 border border-rose-300 text-xs font-semibold shadow-2xs flex items-center gap-1.5"
-              >
-                <Sparkles className="w-3.5 h-3.5 text-rose-600" />
-                <span>1-Click Auto-Resolve Conflicting Prefixes</span>
-              </button>
+            {fatalConflicts.some((c) => c.type === 'PREFIX_LOCKED_COLLISION' || c.type === 'CROSS_SECTION_PREFIX_COLLISION') && (
+              <span className="text-xs font-semibold text-rose-800 bg-white/80 border border-rose-300 px-3 py-1.5 rounded-xl shadow-2xs">
+                Fixed Labs & Locked Periods are preserved intact. Adjust conflicting slots in Step 5.
+              </span>
             )}
           </div>
         </div>

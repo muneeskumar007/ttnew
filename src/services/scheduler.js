@@ -130,6 +130,184 @@ export const isFacultyBusy = (
   return { busy: false };
 };
 
+// Extract all faculty IDs assigned to a subject allocation (theory + lab)
+export const getSubjectAssignedFaculty = (alloc) => {
+  if (!alloc) return [];
+  const facs = [];
+  if (alloc.theoryFaculty && !facs.includes(alloc.theoryFaculty)) {
+    facs.push(alloc.theoryFaculty);
+  }
+  if (Array.isArray(alloc.labFaculty)) {
+    alloc.labFaculty.forEach((fId) => {
+      if (fId && !facs.includes(fId)) facs.push(fId);
+    });
+  } else if (alloc.labFaculty && !facs.includes(alloc.labFaculty)) {
+    facs.push(alloc.labFaculty);
+  }
+  return facs;
+};
+
+// Check if a subject can be locked at (day, periodsToLock) without collisions
+export const checkPrefixSlotCollisions = ({
+  subjectCode,
+  day,
+  periodsToLock, // array of period numbers e.g. [5, 6, 7] or [period]
+  sectionId,
+  allocations,
+  prefixedSlots = {},
+  allFaculty = [],
+  sections = [],
+  subjects = [],
+}) => {
+  const secAlloc = allocations[sectionId] || {};
+  const alloc = secAlloc[subjectCode];
+  const assignedFacIds = getSubjectAssignedFaculty(alloc);
+  const collisions = [];
+
+  const sub = subjects.find((s) => s.code === subjectCode);
+  const subName = sub?.name || subjectCode;
+
+  for (const facId of assignedFacIds) {
+    const facObj = allFaculty.find((f) => f.id === facId);
+    const facName = facObj?.name || facId;
+
+    for (const p of periodsToLock) {
+      // 1. Check Step 1: Other Department Locked Hours (Hard constraint)
+      if (facObj && facObj.lockedSlots) {
+        const lockedExt = facObj.lockedSlots.find(
+          (ls) => ls.day?.toLowerCase() === day?.toLowerCase() && Number(ls.period) === Number(p)
+        );
+        if (lockedExt) {
+          collisions.push({
+            type: 'EXTERNAL_LOCKED_HOUR',
+            facultyId: facId,
+            facultyName: facName,
+            day,
+            period: p,
+            dept: lockedExt.dept || 'Other',
+            reason: lockedExt.reason || 'Other Department Locked Load',
+            message: `Faculty ${facName} is locked in ${lockedExt.dept || 'Other'} Department on ${day} Period ${p} (${lockedExt.reason || 'Other Dept Load'}).`,
+          });
+        }
+      }
+
+      // 2. Check Step 5: Prefixed in other sections
+      for (const [otherSecId, otherGrid] of Object.entries(prefixedSlots)) {
+        if (otherSecId === sectionId) continue;
+        const otherSlot = otherGrid[day]?.[p];
+        if (otherSlot && otherSlot.subjectCode) {
+          const otherSecAlloc = allocations[otherSecId] || {};
+          const otherFacs = getSubjectAssignedFaculty(otherSecAlloc[otherSlot.subjectCode]);
+          if (otherFacs.includes(facId)) {
+            const otherSecName = sections.find((s) => s.id === otherSecId)?.name || otherSecId;
+            collisions.push({
+              type: 'CROSS_SECTION_PREFIX',
+              facultyId: facId,
+              facultyName: facName,
+              day,
+              period: p,
+              otherSectionId: otherSecId,
+              otherSectionName: otherSecName,
+              otherSubjectCode: otherSlot.subjectCode,
+              message: `Faculty ${facName} is already locked in "${otherSecName}" on ${day} Period ${p} (${otherSlot.subjectCode}).`,
+            });
+          }
+        }
+      }
+    }
+  }
+
+  return {
+    allowed: collisions.length === 0,
+    collisions,
+    reason: collisions.map((c) => c.message).join('; '),
+  };
+};
+
+// Scan all existing prefixed slots across all sections to detect any active hard collisions
+export const scanExistingPrefixCollisions = ({
+  sections = [],
+  subjects = [],
+  faculty = [],
+  allocations = {},
+  prefixedSlots = {},
+}) => {
+  const conflicts = [];
+  const prefixTracker = {}; // fId -> day -> period -> { secId, secName, subCode }
+
+  sections.forEach((sec) => {
+    const secPrefixed = prefixedSlots[sec.id] || {};
+    const secAlloc = allocations[sec.id] || {};
+
+    Object.entries(secPrefixed).forEach(([d, daySlots]) => {
+      Object.entries(daySlots).forEach(([pStr, slot]) => {
+        const p = Number(pStr);
+        if (!slot || !slot.subjectCode) return;
+
+        const sub = subjects.find((s) => s.code === slot.subjectCode);
+        const alloc = secAlloc[slot.subjectCode];
+        const assignedFac = getSubjectAssignedFaculty(alloc);
+
+        assignedFac.forEach((fId) => {
+          const fac = faculty.find((f) => f.id === fId);
+          if (!fac) return;
+
+          // 1. Check external locked slot
+          const lockedSlot = (fac.lockedSlots || []).find(
+            (ls) => ls.day?.toLowerCase() === d?.toLowerCase() && Number(ls.period) === Number(p)
+          );
+          if (lockedSlot) {
+            conflicts.push({
+              sectionId: sec.id,
+              sectionName: sec.name,
+              subjectCode: slot.subjectCode,
+              subjectName: sub?.name || slot.subjectCode,
+              type: slot.type || 'theory',
+              day: d,
+              period: p,
+              labBlockId: slot.labBlockId,
+              facultyId: fId,
+              facultyName: fac.name,
+              lockedDept: lockedSlot.dept || 'Other',
+              lockedReason: lockedSlot.reason || 'Locked Load',
+              message: `In "${sec.name}", ${slot.type} "${sub?.name || slot.subjectCode}" is locked on ${d} Period ${p}, but ${fac.name} is locked in ${lockedSlot.dept || 'Other'} Department during that hour.`,
+            });
+          }
+
+          // 2. Check cross-section double-booking
+          if (!prefixTracker[fId]) prefixTracker[fId] = {};
+          if (!prefixTracker[fId][d]) prefixTracker[fId][d] = {};
+          if (prefixTracker[fId][d][p]) {
+            const prev = prefixTracker[fId][d][p];
+            conflicts.push({
+              sectionId: sec.id,
+              sectionName: sec.name,
+              otherSectionId: prev.secId,
+              otherSectionName: prev.secName,
+              subjectCode: slot.subjectCode,
+              subjectName: sub?.name || slot.subjectCode,
+              day: d,
+              period: p,
+              labBlockId: slot.labBlockId,
+              facultyId: fId,
+              facultyName: fac.name,
+              message: `Double-booked: Faculty ${fac.name} is locked on ${d} Period ${p} in both "${sec.name}" and "${prev.secName}".`,
+            });
+          } else {
+            prefixTracker[fId][d][p] = {
+              secId: sec.id,
+              secName: sec.name,
+              subCode: slot.subjectCode,
+            };
+          }
+        });
+      });
+    });
+  });
+
+  return conflicts;
+};
+
 // Candidate continuous lab blocks (never crossing lunch: 1-4 morning, 5-7 afternoon)
 const LAB_BLOCK_TEMPLATES = {
   3: {

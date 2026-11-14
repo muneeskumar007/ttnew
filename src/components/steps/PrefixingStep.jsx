@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { 
   Lock, 
   Unlock, 
@@ -12,11 +12,19 @@ import {
   Sparkles,
   Info,
   ShieldCheck,
+  ShieldAlert,
+  AlertOctagon,
   Beaker,
   Layers
 } from 'lucide-react';
 import { DAYS, DAY_PERIODS, PERIOD_TIMINGS, TOTAL_WEEKLY_PERIODS, SUBJECT_PALETTES, getSubjectAcronym } from '../../types/constants';
-import { computeSectionTally, isFacultyBusy } from '../../services/scheduler';
+import { 
+  computeSectionTally, 
+  isFacultyBusy,
+  checkPrefixSlotCollisions,
+  scanExistingPrefixCollisions,
+  getSubjectAssignedFaculty 
+} from '../../services/scheduler';
 
 export const PrefixingStep = ({
   sections,
@@ -47,19 +55,59 @@ export const PrefixingStep = ({
     prefixedSlots
   );
 
-  // Prefix a Theory Hour
+  // Scan all existing prefixed slots across all sections to proactively surface any hard collisions
+  const existingCollisions = useMemo(() => {
+    return scanExistingPrefixCollisions({
+      sections,
+      subjects,
+      faculty,
+      allocations,
+      prefixedSlots,
+    });
+  }, [sections, subjects, faculty, allocations, prefixedSlots]);
+
+  // Unlock / remove a slot specifically from the collision warning list
+  const handleUnlockSlotFromCollision = (secId, day, period, labBlockId) => {
+    setPrefixedSlots((prev) => {
+      const copy = JSON.parse(JSON.stringify(prev || {}));
+      const secData = copy[secId] || {};
+      const dayData = secData[day] || {};
+
+      if (labBlockId) {
+        Object.keys(dayData).forEach((p) => {
+          if (dayData[p]?.labBlockId === labBlockId) {
+            delete dayData[p];
+          }
+        });
+      } else {
+        delete dayData[period];
+      }
+
+      return copy;
+    });
+  };
+
+  // Prefix a Theory Hour with Hard Collision Guard
   const handlePrefixTheory = (subjectCode, isTutor = false) => {
     if (!modalSlot) return;
     const { day, period } = modalSlot;
 
-    // Check faculty availability for this slot
-    const alloc = secAlloc[subjectCode];
-    if (alloc?.theoryFaculty) {
-      const busy = isFacultyBusy(alloc.theoryFaculty, day, period, {}, faculty);
-      if (busy.busy) {
-        alert(`Cannot prefix slot: Assigned faculty is busy (${busy.reason}).`);
-        return;
-      }
+    // Check collision guard against Step 1 other dept load and other sections
+    const check = checkPrefixSlotCollisions({
+      subjectCode,
+      day,
+      periodsToLock: [period],
+      sectionId: activeSection.id,
+      allocations,
+      prefixedSlots,
+      allFaculty: faculty,
+      sections,
+      subjects,
+    });
+
+    if (!check.allowed) {
+      alert(`Action Not Allowed!\n${check.reason}\n\nA faculty cannot be locked on the same day and period as their other department or another class commitments.`);
+      return;
     }
 
     setPrefixedSlots((prev) => {
@@ -85,13 +133,12 @@ export const PrefixingStep = ({
     setModalSlot(null);
   };
 
-  // Prefix a Continuous Lab Block (2 or 3 periods)
+  // Prefix a Continuous Lab Block (2 or 3 periods) with Hard Collision Guard
   const handlePrefixLabBlock = (subjectCode, blockSize = 3) => {
     if (!modalSlot) return;
     const { day, period } = modalSlot;
 
     // Determine target periods
-    const maxP = DAY_PERIODS[day];
     let periodsToLock = [];
 
     if (blockSize === 3) {
@@ -110,7 +157,7 @@ export const PrefixingStep = ({
       return;
     }
 
-    // Check if any of target periods are already locked or inactive
+    // Check if any of target periods are already locked or inactive in this section
     const dayData = secPrefixed[day] || {};
     const conflict = periodsToLock.some((p) => dayData[p] || (day === 'Saturday' && p > 4));
     if (conflict) {
@@ -118,19 +165,22 @@ export const PrefixingStep = ({
       return;
     }
 
-    const alloc = secAlloc[subjectCode];
-    const labFacs = alloc?.labFaculty || [];
+    // Check collision guard across all target periods against Step 1 other dept load and other sections
+    const check = checkPrefixSlotCollisions({
+      subjectCode,
+      day,
+      periodsToLock,
+      sectionId: activeSection.id,
+      allocations,
+      prefixedSlots,
+      allFaculty: faculty,
+      sections,
+      subjects,
+    });
 
-    // Check faculty availability for all target periods
-    for (const p of periodsToLock) {
-      for (const facId of labFacs) {
-        const busy = isFacultyBusy(facId, day, p, {}, faculty);
-        if (busy.busy) {
-          const facName = faculty.find((f) => f.id === facId)?.name || facId;
-          alert(`Cannot prefix lab block: Faculty ${facName} is busy at ${day} P${p} (${busy.reason}).`);
-          return;
-        }
-      }
+    if (!check.allowed) {
+      alert(`Action Not Allowed!\n${check.reason}\n\nA faculty cannot be locked on the same day and period as their other department load or another class.`);
+      return;
     }
 
     // Lock all periods in this lab block
@@ -255,6 +305,69 @@ export const PrefixingStep = ({
         </div>
       ) : (
         <>
+      {/* Hard Collision Warning Banner across all fixed slots */}
+      {existingCollisions.length > 0 && (
+        <div className="bg-rose-50 border-2 border-rose-300 rounded-2xl p-5 shadow-sm space-y-3">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-rose-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-rose-200">
+              <ShieldAlert className="w-5 h-5" />
+            </div>
+            <div className="flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-bold text-rose-950 uppercase tracking-wide">
+                  Hard Collision Detected in Fixed / Prefixed Slots ({existingCollisions.length})
+                </span>
+                <span className="px-2 py-0.5 rounded text-[11px] font-bold bg-rose-200 text-rose-900">
+                  Fixed Labs Protected &bull; Action Required
+                </span>
+              </div>
+              <p className="text-xs text-rose-800 mt-1">
+                As per your settings, the scheduler will <strong>never change, move, or delete</strong> your fixed labs or locked periods. 
+                However, one or more faculty members are currently locked on periods where they have Step 1 Other Department Load or cross-section conflicts. 
+                Please unlock the conflicting slots below and choose open periods.
+              </p>
+            </div>
+          </div>
+
+          <div className="space-y-2 pt-2 border-t border-rose-200/80">
+            {existingCollisions.map((coll, idx) => (
+              <div 
+                key={idx}
+                className="bg-white p-3 rounded-xl border border-rose-200 flex flex-col sm:flex-row sm:items-center justify-between gap-2 shadow-2xs"
+              >
+                <div className="flex items-start gap-2.5">
+                  <AlertOctagon className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <div>
+                    <div className="flex flex-wrap items-center gap-1.5 text-xs">
+                      <span className="font-bold text-slate-900 bg-slate-100 px-2 py-0.5 rounded">
+                        {coll.sectionName}
+                      </span>
+                      <span className="font-semibold text-rose-700 bg-rose-50 px-2 py-0.5 rounded border border-rose-100">
+                        {coll.subjectCode} ({coll.type === 'lab' ? 'Lab Block' : 'Theory'})
+                      </span>
+                      <span className="font-bold text-slate-700">
+                        {coll.day} Period {coll.period}
+                      </span>
+                    </div>
+                    <p className="text-xs text-rose-800 mt-1 font-medium">
+                      {coll.message}
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => handleUnlockSlotFromCollision(coll.sectionId, coll.day, coll.period, coll.labBlockId)}
+                  className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl text-xs font-semibold shrink-0 shadow-2xs flex items-center gap-1.5 transition-colors self-end sm:self-center"
+                >
+                  <Unlock className="w-3.5 h-3.5" />
+                  <span>Unlock &amp; Fix</span>
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* Dynamic Tally & Reconciliation Engine Banner (Gatekeeper) */}
       <div
         className={`rounded-2xl p-5 border transition-all ${
@@ -399,43 +512,87 @@ export const PrefixingStep = ({
                       const palette = sub
                         ? SUBJECT_PALETTES.find((pal) => pal.id === sub.colorId) || SUBJECT_PALETTES[0]
                         : null;
+                      const cellCollision = existingCollisions.find(
+                        (c) => c.sectionId === activeSection.id && c.day === day && Number(c.period) === Number(p)
+                      );
 
                       return (
                         <td key={p} className="p-2 border border-slate-100 align-top">
                           {slot ? (
-                            <div
-                              className="p-2 rounded-xl text-left relative group border bg-stripes-locked transition-all shadow-xs"
-                              style={{
-                                borderColor: palette ? palette.border : '#fda4af',
-                              }}
-                            >
-                              <div className="flex items-center justify-between">
-                                <span className="font-bold text-xs text-slate-900">
-                                  {slot.subjectCode}
-                                </span>
-                                <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-1 rounded">
-                                  LOCKED
-                                </span>
-                              </div>
+                            cellCollision ? (
                               <div
-                                className="font-extrabold text-xs text-slate-800 mt-0.5"
-                                title={sub?.name || slot.subjectCode}
+                                className="p-2 rounded-xl text-left relative group border-2 border-rose-500 bg-rose-50/90 transition-all shadow-xs ring-2 ring-rose-200"
                               >
-                                {getSubjectAcronym(sub?.name, slot.subjectCode)}
-                              </div>
-                              <div className="flex items-center justify-between mt-1 text-[10px]">
-                                <span className="font-semibold text-rose-800">
-                                  {slot.type === 'lab' ? 'Lab Block' : 'Theory'}
-                                </span>
-                                <button
-                                  onClick={() => handleUnlockSlot(day, p)}
-                                  className="text-slate-400 hover:text-rose-600 p-0.5 rounded transition-colors"
-                                  title="Unlock / Remove slot"
+                                <div className="flex items-center justify-between">
+                                  <span className="font-bold text-xs text-rose-950">
+                                    {slot.subjectCode}
+                                  </span>
+                                  <span className="text-[9px] font-extrabold text-white bg-rose-600 px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-2xs">
+                                    <AlertOctagon className="w-2.5 h-2.5" />
+                                    COLLISION
+                                  </span>
+                                </div>
+                                <div
+                                  className="font-extrabold text-xs text-slate-800 mt-0.5"
+                                  title={sub?.name || slot.subjectCode}
                                 >
-                                  <Unlock className="w-3 h-3" />
-                                </button>
+                                  {getSubjectAcronym(sub?.name, slot.subjectCode)}
+                                </div>
+                                <div 
+                                  className="text-[10px] font-bold text-rose-700 truncate mt-0.5" 
+                                  title={cellCollision.message}
+                                >
+                                  {cellCollision.facultyName}: Locked Elsewhere
+                                </div>
+                                <div className="flex items-center justify-between mt-1 text-[10px]">
+                                  <span className="font-semibold text-rose-800">
+                                    {slot.type === 'lab' ? 'Lab Block' : 'Theory'}
+                                  </span>
+                                  <button
+                                    onClick={() => handleUnlockSlot(day, p)}
+                                    className="bg-rose-600 hover:bg-rose-700 text-white px-1.5 py-0.5 rounded font-bold transition-colors flex items-center gap-1 shadow-2xs"
+                                    title="Unlock / Remove slot to resolve collision"
+                                  >
+                                    <Unlock className="w-2.5 h-2.5" />
+                                    <span>Fix</span>
+                                  </button>
+                                </div>
                               </div>
-                            </div>
+                            ) : (
+                              <div
+                                className="p-2 rounded-xl text-left relative group border bg-stripes-locked transition-all shadow-xs"
+                                style={{
+                                  borderColor: palette ? palette.border : '#fda4af',
+                                }}
+                              >
+                                <div className="flex items-center justify-between">
+                                  <span className="font-bold text-xs text-slate-900">
+                                    {slot.subjectCode}
+                                  </span>
+                                  <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-1 rounded">
+                                    LOCKED
+                                  </span>
+                                </div>
+                                <div
+                                  className="font-extrabold text-xs text-slate-800 mt-0.5"
+                                  title={sub?.name || slot.subjectCode}
+                                >
+                                  {getSubjectAcronym(sub?.name, slot.subjectCode)}
+                                </div>
+                                <div className="flex items-center justify-between mt-1 text-[10px]">
+                                  <span className="font-semibold text-rose-800">
+                                    {slot.type === 'lab' ? 'Lab Block' : 'Theory'}
+                                  </span>
+                                  <button
+                                    onClick={() => handleUnlockSlot(day, p)}
+                                    className="text-slate-400 hover:text-rose-600 p-0.5 rounded transition-colors"
+                                    title="Unlock / Remove slot"
+                                  >
+                                    <Unlock className="w-3 h-3" />
+                                  </button>
+                                </div>
+                              </div>
+                            )
                           ) : (
                             <button
                               onClick={() => setModalSlot({ day, period: p })}
@@ -473,40 +630,87 @@ export const PrefixingStep = ({
                         const palette = sub
                           ? SUBJECT_PALETTES.find((pal) => pal.id === sub.colorId) || SUBJECT_PALETTES[0]
                           : null;
+                        const cellCollision = existingCollisions.find(
+                          (c) => c.sectionId === activeSection.id && c.day === day && Number(c.period) === Number(p)
+                        );
 
                         return (
                           <td key={p} className="p-2 border border-slate-100 align-top">
                             {slot ? (
-                              <div
-                                className="p-2 rounded-xl text-left relative group border bg-stripes-locked transition-all shadow-xs"
-                                style={{
-                                  borderColor: palette ? palette.border : '#fda4af',
-                                }}
-                              >
-                                <div className="flex items-center justify-between">
-                                  <span className="font-bold text-xs text-slate-900">
-                                    {slot.subjectCode}
-                                  </span>
-                                  <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-1 rounded">
-                                    LOCKED
-                                  </span>
-                                </div>
-                                <div className="text-[10px] text-slate-600 truncate mt-0.5">
-                                  {sub?.name}
-                                </div>
-                                <div className="flex items-center justify-between mt-1 text-[10px]">
-                                  <span className="font-semibold text-rose-800">
-                                    {slot.type === 'lab' ? 'Lab Block' : 'Theory'}
-                                  </span>
-                                  <button
-                                    onClick={() => handleUnlockSlot(day, p)}
-                                    className="text-slate-400 hover:text-rose-600 p-0.5 rounded transition-colors"
-                                    title="Unlock / Remove slot"
+                              cellCollision ? (
+                                <div
+                                  className="p-2 rounded-xl text-left relative group border-2 border-rose-500 bg-rose-50/90 transition-all shadow-xs ring-2 ring-rose-200"
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-bold text-xs text-rose-950">
+                                      {slot.subjectCode}
+                                    </span>
+                                    <span className="text-[9px] font-extrabold text-white bg-rose-600 px-1.5 py-0.5 rounded flex items-center gap-0.5 shadow-2xs">
+                                      <AlertOctagon className="w-2.5 h-2.5" />
+                                      COLLISION
+                                    </span>
+                                  </div>
+                                  <div
+                                    className="font-extrabold text-xs text-slate-800 mt-0.5"
+                                    title={sub?.name || slot.subjectCode}
                                   >
-                                    <Unlock className="w-3 h-3" />
-                                  </button>
+                                    {getSubjectAcronym(sub?.name, slot.subjectCode)}
+                                  </div>
+                                  <div 
+                                    className="text-[10px] font-bold text-rose-700 truncate mt-0.5" 
+                                    title={cellCollision.message}
+                                  >
+                                    {cellCollision.facultyName}: Locked Elsewhere
+                                  </div>
+                                  <div className="flex items-center justify-between mt-1 text-[10px]">
+                                    <span className="font-semibold text-rose-800">
+                                      {slot.type === 'lab' ? 'Lab Block' : 'Theory'}
+                                    </span>
+                                    <button
+                                      onClick={() => handleUnlockSlot(day, p)}
+                                      className="bg-rose-600 hover:bg-rose-700 text-white px-1.5 py-0.5 rounded font-bold transition-colors flex items-center gap-1 shadow-2xs"
+                                      title="Unlock / Remove slot to resolve collision"
+                                    >
+                                      <Unlock className="w-2.5 h-2.5" />
+                                      <span>Fix</span>
+                                    </button>
+                                  </div>
                                 </div>
-                              </div>
+                              ) : (
+                                <div
+                                  className="p-2 rounded-xl text-left relative group border bg-stripes-locked transition-all shadow-xs"
+                                  style={{
+                                    borderColor: palette ? palette.border : '#fda4af',
+                                  }}
+                                >
+                                  <div className="flex items-center justify-between">
+                                    <span className="font-bold text-xs text-slate-900">
+                                      {slot.subjectCode}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-rose-700 bg-rose-100 px-1 rounded">
+                                      LOCKED
+                                    </span>
+                                  </div>
+                                  <div
+                                    className="font-extrabold text-xs text-slate-800 mt-0.5"
+                                    title={sub?.name || slot.subjectCode}
+                                  >
+                                    {getSubjectAcronym(sub?.name, slot.subjectCode)}
+                                  </div>
+                                  <div className="flex items-center justify-between mt-1 text-[10px]">
+                                    <span className="font-semibold text-rose-800">
+                                      {slot.type === 'lab' ? 'Lab Block' : 'Theory'}
+                                    </span>
+                                    <button
+                                      onClick={() => handleUnlockSlot(day, p)}
+                                      className="text-slate-400 hover:text-rose-600 p-0.5 rounded transition-colors"
+                                      title="Unlock / Remove slot"
+                                    >
+                                      <Unlock className="w-3 h-3" />
+                                    </button>
+                                  </div>
+                                </div>
+                              )
                             ) : (
                               <button
                                 onClick={() => setModalSlot({ day, period: p })}
@@ -558,28 +762,65 @@ export const PrefixingStep = ({
                   <Clock className="w-3.5 h-3.5 text-indigo-600" />
                   <span>Prefix Theory Hour (1 Period)</span>
                 </h4>
-                <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
                   {assignedSubjects
                     .filter((s) => s.theoryHours > 0)
                     .map((sub) => {
                       const isMentorSubject = sub.name.toLowerCase().includes('mentor');
+                      const check = checkPrefixSlotCollisions({
+                        subjectCode: sub.code,
+                        day: modalSlot.day,
+                        periodsToLock: [modalSlot.period],
+                        sectionId: activeSection.id,
+                        allocations,
+                        prefixedSlots,
+                        allFaculty: faculty,
+                        sections,
+                        subjects,
+                      });
+
                       return (
                         <div
                           key={sub.code}
-                          className="flex items-center justify-between p-2.5 rounded-xl border border-slate-200 hover:border-indigo-300 hover:bg-slate-50 transition-colors"
+                          className={`p-2.5 rounded-xl border transition-all ${
+                            check.allowed
+                              ? 'border-slate-200 hover:border-indigo-300 hover:bg-slate-50'
+                              : 'border-rose-300 bg-rose-50/70'
+                          }`}
                         >
-                          <div>
-                            <span className="font-bold text-xs text-slate-900 mr-2">
-                              {sub.code}
-                            </span>
-                            <span className="text-xs text-slate-600">{sub.name}</span>
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <span className="font-bold text-xs text-slate-900 mr-2">
+                                {sub.code}
+                              </span>
+                              <span className="text-xs text-slate-600">{sub.name}</span>
+                            </div>
+                            {check.allowed ? (
+                              <button
+                                onClick={() => handlePrefixTheory(sub.code, isMentorSubject)}
+                                className="px-3 py-1 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-2xs shrink-0 transition-colors"
+                              >
+                                Lock 1h
+                              </button>
+                            ) : (
+                              <span 
+                                className="px-2 py-1 text-[11px] font-bold text-rose-700 bg-rose-100 rounded-lg shrink-0 flex items-center gap-1 cursor-not-allowed border border-rose-200"
+                                title={check.reason}
+                              >
+                                <AlertOctagon className="w-3 h-3 text-rose-600" />
+                                Can't Allow
+                              </span>
+                            )}
                           </div>
-                          <button
-                            onClick={() => handlePrefixTheory(sub.code, isMentorSubject)}
-                            className="px-3 py-1 text-xs font-semibold text-white bg-indigo-600 hover:bg-indigo-700 rounded-lg shadow-2xs"
-                          >
-                            Lock 1h
-                          </button>
+                          {!check.allowed && (
+                            <div className="mt-2 text-[11px] text-rose-900 font-medium flex items-start gap-1.5 bg-white/90 p-2 rounded-lg border border-rose-200 shadow-2xs">
+                              <AlertOctagon className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+                              <div className="space-y-0.5">
+                                <div className="font-bold text-rose-950">Action Not Allowed:</div>
+                                <div>{check.reason}</div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
@@ -592,33 +833,85 @@ export const PrefixingStep = ({
                   <Beaker className="w-3.5 h-3.5 text-purple-600" />
                   <span>Prefix Continuous Lab Block</span>
                 </h4>
-                <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+                <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
                   {assignedSubjects
                     .filter((s) => s.labHours > 0)
-                    .map((sub) => (
-                      <div
-                        key={sub.code}
-                        className="flex items-center justify-between p-2.5 rounded-xl border border-purple-200 bg-purple-50/30 hover:bg-purple-50 transition-colors"
-                      >
-                        <div>
-                          <span className="font-bold text-xs text-purple-900 mr-2">
-                            {sub.code}
-                          </span>
-                          <span className="text-xs text-slate-700">{sub.name}</span>
-                          <div className="text-[10px] text-purple-600 font-medium">
-                            Requires {sub.labHours} continuous periods block
+                    .map((sub) => {
+                      const blockSize = sub.labHours >= 3 ? 3 : 2;
+                      let periodsToLock = [];
+                      if (blockSize === 3) {
+                        if (modalSlot.period <= 4) periodsToLock = [1, 2, 3];
+                        else periodsToLock = [5, 6, 7];
+                      } else {
+                        if (modalSlot.period === 1) periodsToLock = [1, 2];
+                        else if (modalSlot.period === 2) periodsToLock = [2, 3];
+                        else if (modalSlot.period <= 4) periodsToLock = [3, 4];
+                        else if (modalSlot.period === 5) periodsToLock = [5, 6];
+                        else periodsToLock = [6, 7];
+                      }
+
+                      const check = checkPrefixSlotCollisions({
+                        subjectCode: sub.code,
+                        day: modalSlot.day,
+                        periodsToLock,
+                        sectionId: activeSection.id,
+                        allocations,
+                        prefixedSlots,
+                        allFaculty: faculty,
+                        sections,
+                        subjects,
+                      });
+
+                      return (
+                        <div
+                          key={sub.code}
+                          className={`p-2.5 rounded-xl border transition-all ${
+                            check.allowed
+                              ? 'border-purple-200 bg-purple-50/30 hover:bg-purple-50'
+                              : 'border-rose-300 bg-rose-50/70'
+                          }`}
+                        >
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <span className={`font-bold text-xs mr-2 ${check.allowed ? 'text-purple-900' : 'text-rose-950'}`}>
+                                {sub.code}
+                              </span>
+                              <span className="text-xs text-slate-700">{sub.name}</span>
+                              <div className={`text-[10px] font-medium ${check.allowed ? 'text-purple-600' : 'text-slate-500'}`}>
+                                Requires {sub.labHours} continuous periods block ({periodsToLock.map((p) => `P${p}`).join(', ')})
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              {check.allowed ? (
+                                <button
+                                  onClick={() => handlePrefixLabBlock(sub.code, blockSize)}
+                                  className="px-3 py-1 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-lg shadow-2xs transition-colors"
+                                >
+                                  Lock {sub.labHours}h Block
+                                </button>
+                              ) : (
+                                <span 
+                                  className="px-2 py-1 text-[11px] font-bold text-rose-700 bg-rose-100 rounded-lg shrink-0 flex items-center gap-1 cursor-not-allowed border border-rose-200"
+                                  title={check.reason}
+                                >
+                                  <AlertOctagon className="w-3 h-3 text-rose-600" />
+                                  Can't Allow
+                                </span>
+                              )}
+                            </div>
                           </div>
+                          {!check.allowed && (
+                            <div className="mt-2 text-[11px] text-rose-900 font-medium flex items-start gap-1.5 bg-white/90 p-2 rounded-lg border border-rose-200 shadow-2xs">
+                              <AlertOctagon className="w-3.5 h-3.5 text-rose-600 shrink-0 mt-0.5" />
+                              <div className="space-y-0.5">
+                                <div className="font-bold text-rose-950">Action Not Allowed:</div>
+                                <div>{check.reason}</div>
+                              </div>
+                            </div>
+                          )}
                         </div>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            onClick={() => handlePrefixLabBlock(sub.code, sub.labHours >= 3 ? 3 : 2)}
-                            className="px-3 py-1 text-xs font-semibold text-white bg-purple-600 hover:bg-purple-700 rounded-lg shadow-2xs"
-                          >
-                            Lock {sub.labHours}h Block
-                          </button>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   {assignedSubjects.filter((s) => s.labHours > 0).length === 0 && (
                     <div className="text-xs text-slate-400 italic">
                       No lab subjects assigned to this section.
