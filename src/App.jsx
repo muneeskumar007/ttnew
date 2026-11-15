@@ -112,7 +112,7 @@ export function App() {
         faculty,
         subjects,
         sections: sortSections(sections),
-        allocations,
+        allocations: sanitizeAllocations(allocations, subjects),
         prefixedSlots,
         timetables,
       };
@@ -140,7 +140,7 @@ export function App() {
       faculty,
       subjects,
       sections: sortSections(sections),
-      allocations,
+      allocations: sanitizeAllocations(allocations, subjects),
       prefixedSlots,
       timetables,
     };
