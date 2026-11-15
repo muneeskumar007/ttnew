@@ -165,6 +165,8 @@ export const getSubjectAssignedFaculty = (alloc, sub = null, slotType = null) =>
 };
 
 // Check if a subject can be locked at (day, periodsToLock) without collisions
+// For multi-faculty labs: 1 faculty is sufficient to conduct the lab.
+// If AT LEAST ONE faculty in the lab batch is free across periodsToLock, the lab is allowed!
 export const checkPrefixSlotCollisions = ({
   subjectCode,
   day,
@@ -181,65 +183,144 @@ export const checkPrefixSlotCollisions = ({
   const alloc = secAlloc[subjectCode];
   const sub = subjects.find((s) => s.code === subjectCode);
 
-  const candidateSlotType = slotType || (periodsToLock.length > 1 || (sub && sub.theoryHours === 0 && sub.labHours > 0) ? 'lab' : 'theory');
+  const candidateSlotType =
+    slotType ||
+    (periodsToLock.length > 1 || (sub && sub.theoryHours === 0 && sub.labHours > 0)
+      ? 'lab'
+      : 'theory');
   const assignedFacIds = getSubjectAssignedFaculty(alloc, sub, candidateSlotType);
   const collisions = [];
 
-  const subName = sub?.name || subjectCode;
+  // Helper: check if a specific faculty is busy on (day, p)
+  const getFacBusyReason = (facId, p) => {
+    const facObj = allFaculty.find((f) => f.id === facId);
+    if (!facObj) return null;
 
+    // 1. External locked hour
+    if (facObj.lockedSlots) {
+      const lockedExt = facObj.lockedSlots.find(
+        (ls) => ls.day?.toLowerCase() === day?.toLowerCase() && Number(ls.period) === Number(p)
+      );
+      if (lockedExt) {
+        return {
+          type: 'EXTERNAL_LOCKED_HOUR',
+          message: `locked in ${lockedExt.dept || 'Other'} Department (${lockedExt.reason || 'Locked Load'})`,
+        };
+      }
+    }
+
+    // 2. Prefixed in another section
+    for (const [otherSecId, otherGrid] of Object.entries(prefixedSlots)) {
+      if (otherSecId === sectionId) continue;
+      const otherSlot = otherGrid[day]?.[p];
+      if (otherSlot && otherSlot.subjectCode) {
+        const otherSecAlloc = allocations[otherSecId] || {};
+        const otherSub = subjects.find((s) => s.code === otherSlot.subjectCode);
+        const otherSlotType = otherSlot.type || (otherSlot.labBlockId ? 'lab' : 'theory');
+        const otherFacs = getSubjectAssignedFaculty(
+          otherSecAlloc[otherSlot.subjectCode],
+          otherSub,
+          otherSlotType
+        );
+
+        if (otherFacs.includes(facId)) {
+          // If the other slot is a multi-faculty lab, check if the other lab has another free faculty to cover it
+          if (otherSlotType === 'lab' && otherFacs.length > 1) {
+            const otherHasFree = otherFacs.some((otherFId) => {
+              if (otherFId === facId) return false;
+              const fObj = allFaculty.find((f) => f.id === otherFId);
+              const hasExt = fObj?.lockedSlots?.some(
+                (ls) => ls.day?.toLowerCase() === day?.toLowerCase() && Number(ls.period) === Number(p)
+              );
+              return !hasExt;
+            });
+            if (otherHasFree) {
+              // The other lab is covered by its other faculty, so facId is not blocked by it
+              continue;
+            }
+          }
+
+          const otherSecName = sections.find((s) => s.id === otherSecId)?.name || otherSecId;
+          return {
+            type: 'CROSS_SECTION_PREFIX',
+            message: `already locked in "${otherSecName}" (${otherSlot.subjectCode})`,
+          };
+        }
+      }
+    }
+
+    return null;
+  };
+
+  // MULTI-FACULTY LAB RULE: 1 faculty is sufficient to conduct/maintain the lab session.
+  // If at least one assigned faculty is free across all periodsToLock, the lab is 100% ALLOWED!
+  if (candidateSlotType === 'lab' && assignedFacIds.length > 1) {
+    const facultyEvaluations = assignedFacIds.map((facId) => {
+      const facObj = allFaculty.find((f) => f.id === facId);
+      const facName = facObj?.name || facId;
+      const reasons = [];
+
+      for (const p of periodsToLock) {
+        const busy = getFacBusyReason(facId, p);
+        if (busy) {
+          reasons.push(`P${p}: ${busy.message}`);
+        }
+      }
+
+      return {
+        facId,
+        facName,
+        isFree: reasons.length === 0,
+        reasons,
+      };
+    });
+
+    const freeFaculty = facultyEvaluations.filter((f) => f.isFree);
+    const busyFaculty = facultyEvaluations.filter((f) => !f.isFree);
+
+    if (freeFaculty.length > 0) {
+      // At least 1 faculty is completely free across all periods of the lab!
+      return {
+        allowed: true,
+        collisions: [],
+        reason: '',
+        availableFaculty: freeFaculty.map((f) => f.facName),
+        busyFaculty: busyFaculty.map((f) => `${f.facName} (${f.reasons.join(', ')})`),
+      };
+    } else {
+      // Every single assigned faculty has a conflict!
+      const failDetail = facultyEvaluations
+        .map((f) => `Faculty ${f.facName} is unavailable (${f.reasons.join('; ')})`)
+        .join('; ');
+      return {
+        allowed: false,
+        collisions: [
+          {
+            type: 'ALL_LAB_FACULTY_BUSY',
+            message: `All assigned lab faculty are unavailable: ${failDetail}`,
+          },
+        ],
+        reason: `All assigned lab faculty are unavailable: ${failDetail}`,
+      };
+    }
+  }
+
+  // Single-Faculty Slot Check (Theory or single-teacher lab):
   for (const facId of assignedFacIds) {
     const facObj = allFaculty.find((f) => f.id === facId);
     const facName = facObj?.name || facId;
 
     for (const p of periodsToLock) {
-      // 1. Check Step 1: Other Department Locked Hours (Hard constraint)
-      if (facObj && facObj.lockedSlots) {
-        const lockedExt = facObj.lockedSlots.find(
-          (ls) => ls.day?.toLowerCase() === day?.toLowerCase() && Number(ls.period) === Number(p)
-        );
-        if (lockedExt) {
-          collisions.push({
-            type: 'EXTERNAL_LOCKED_HOUR',
-            facultyId: facId,
-            facultyName: facName,
-            day,
-            period: p,
-            dept: lockedExt.dept || 'Other',
-            reason: lockedExt.reason || 'Other Department Locked Load',
-            message: `Faculty ${facName} is locked in ${lockedExt.dept || 'Other'} Department on ${day} Period ${p} (${lockedExt.reason || 'Other Dept Load'}).`,
-          });
-        }
-      }
-
-      // 2. Check Step 5: Prefixed in other sections
-      for (const [otherSecId, otherGrid] of Object.entries(prefixedSlots)) {
-        if (otherSecId === sectionId) continue;
-        const otherSlot = otherGrid[day]?.[p];
-        if (otherSlot && otherSlot.subjectCode) {
-          const otherSecAlloc = allocations[otherSecId] || {};
-          const otherSub = subjects.find((s) => s.code === otherSlot.subjectCode);
-          const otherSlotType = otherSlot.type || (otherSlot.labBlockId ? 'lab' : 'theory');
-          const otherFacs = getSubjectAssignedFaculty(
-            otherSecAlloc[otherSlot.subjectCode],
-            otherSub,
-            otherSlotType
-          );
-
-          if (otherFacs.includes(facId)) {
-            const otherSecName = sections.find((s) => s.id === otherSecId)?.name || otherSecId;
-            collisions.push({
-              type: 'CROSS_SECTION_PREFIX',
-              facultyId: facId,
-              facultyName: facName,
-              day,
-              period: p,
-              otherSectionId: otherSecId,
-              otherSectionName: otherSecName,
-              otherSubjectCode: otherSlot.subjectCode,
-              message: `Faculty ${facName} is already locked in "${otherSecName}" on ${day} Period ${p} (${otherSlot.subjectCode}).`,
-            });
-          }
-        }
+      const busy = getFacBusyReason(facId, p);
+      if (busy) {
+        collisions.push({
+          type: busy.type,
+          facultyId: facId,
+          facultyName: facName,
+          day,
+          period: p,
+          message: `Faculty ${facName} is ${busy.message} on ${day} Period ${p}.`,
+        });
       }
     }
   }
@@ -252,6 +333,8 @@ export const checkPrefixSlotCollisions = ({
 };
 
 // Scan all existing prefixed slots across all sections to detect any active hard collisions
+// Multi-faculty labs: 1 free faculty is sufficient to conduct the lab.
+// Only flags a collision if ALL assigned lab faculty are unavailable!
 export const scanExistingPrefixCollisions = ({
   sections = [],
   subjects = [],
@@ -260,8 +343,25 @@ export const scanExistingPrefixCollisions = ({
   prefixedSlots = {},
 }) => {
   const conflicts = [];
-  const prefixTracker = {}; // fId -> day -> period -> { secId, secName, subCode }
+  const singleCommitments = {}; // fId -> day -> period -> { type, secId, secName, subCode }
+  const multiLabSlots = []; // Multi-faculty lab slots evaluated in pass 2
 
+  // Pass 1: Register all Step 1 external locked slots
+  faculty.forEach((f) => {
+    (f.lockedSlots || []).forEach((ls) => {
+      const d = ls.day;
+      const p = Number(ls.period);
+      if (!singleCommitments[f.id]) singleCommitments[f.id] = {};
+      if (!singleCommitments[f.id][d]) singleCommitments[f.id][d] = {};
+      singleCommitments[f.id][d][p] = {
+        type: 'external',
+        dept: ls.dept || 'Other',
+        reason: ls.reason || 'Locked Load',
+      };
+    });
+  });
+
+  // Pass 2: Register single-instructor prefixed slots & queue multi-faculty lab slots
   sections.forEach((sec) => {
     const secPrefixed = prefixedSlots[sec.id] || {};
     const secAlloc = allocations[sec.id] || {};
@@ -276,61 +376,101 @@ export const scanExistingPrefixCollisions = ({
         const slotType = slot.type || (slot.labBlockId ? 'lab' : 'theory');
         const assignedFac = getSubjectAssignedFaculty(alloc, sub, slotType);
 
-        assignedFac.forEach((fId) => {
-          const fac = faculty.find((f) => f.id === fId);
-          if (!fac) return;
+        if (slotType === 'lab' && assignedFac.length > 1) {
+          multiLabSlots.push({ sec, d, p, slot, sub, assignedFac });
+        } else {
+          // Single-instructor slot
+          assignedFac.forEach((fId) => {
+            const fac = faculty.find((f) => f.id === fId);
+            const facName = fac?.name || fId;
 
-          // 1. Check external locked slot
-          const lockedSlot = (fac.lockedSlots || []).find(
-            (ls) => ls.day?.toLowerCase() === d?.toLowerCase() && Number(ls.period) === Number(p)
-          );
-          if (lockedSlot) {
-            conflicts.push({
-              sectionId: sec.id,
-              sectionName: sec.name,
-              subjectCode: slot.subjectCode,
-              subjectName: sub?.name || slot.subjectCode,
-              type: slot.type || 'theory',
-              day: d,
-              period: p,
-              labBlockId: slot.labBlockId,
-              facultyId: fId,
-              facultyName: fac.name,
-              lockedDept: lockedSlot.dept || 'Other',
-              lockedReason: lockedSlot.reason || 'Locked Load',
-              message: `In "${sec.name}", ${slot.type} "${sub?.name || slot.subjectCode}" is locked on ${d} Period ${p}, but ${fac.name} is locked in ${lockedSlot.dept || 'Other'} Department during that hour.`,
-            });
-          }
+            if (!singleCommitments[fId]) singleCommitments[fId] = {};
+            if (!singleCommitments[fId][d]) singleCommitments[fId][d] = {};
 
-          // 2. Check cross-section double-booking
-          if (!prefixTracker[fId]) prefixTracker[fId] = {};
-          if (!prefixTracker[fId][d]) prefixTracker[fId][d] = {};
-          if (prefixTracker[fId][d][p]) {
-            const prev = prefixTracker[fId][d][p];
-            conflicts.push({
-              sectionId: sec.id,
-              sectionName: sec.name,
-              otherSectionId: prev.secId,
-              otherSectionName: prev.secName,
-              subjectCode: slot.subjectCode,
-              subjectName: sub?.name || slot.subjectCode,
-              day: d,
-              period: p,
-              labBlockId: slot.labBlockId,
-              facultyId: fId,
-              facultyName: fac.name,
-              message: `Double-booked: Faculty ${fac.name} is locked on ${d} Period ${p} in both "${sec.name}" and "${prev.secName}".`,
-            });
-          } else {
-            prefixTracker[fId][d][p] = {
-              secId: sec.id,
-              secName: sec.name,
-              subCode: slot.subjectCode,
-            };
-          }
-        });
+            const existing = singleCommitments[fId][d][p];
+            if (existing) {
+              if (existing.type === 'external') {
+                conflicts.push({
+                  sectionId: sec.id,
+                  sectionName: sec.name,
+                  subjectCode: slot.subjectCode,
+                  subjectName: sub?.name || slot.subjectCode,
+                  type: slotType,
+                  day: d,
+                  period: p,
+                  labBlockId: slot.labBlockId,
+                  facultyId: fId,
+                  facultyName: facName,
+                  lockedDept: existing.dept || 'Other',
+                  lockedReason: existing.reason || 'Locked Load',
+                  message: `In "${sec.name}", ${slotType} "${sub?.name || slot.subjectCode}" is locked on ${d} Period ${p}, but ${facName} is locked in ${existing.dept || 'Other'} Department during that hour.`,
+                });
+              } else {
+                conflicts.push({
+                  sectionId: sec.id,
+                  sectionName: sec.name,
+                  otherSectionId: existing.secId,
+                  otherSectionName: existing.secName,
+                  subjectCode: slot.subjectCode,
+                  subjectName: sub?.name || slot.subjectCode,
+                  type: slotType,
+                  day: d,
+                  period: p,
+                  labBlockId: slot.labBlockId,
+                  facultyId: fId,
+                  facultyName: facName,
+                  message: `Double-booked: Faculty ${facName} is locked on ${d} Period ${p} in both "${sec.name}" and "${existing.secName}".`,
+                });
+              }
+            } else {
+              singleCommitments[fId][d][p] = {
+                type: 'internal',
+                secId: sec.id,
+                secName: sec.name,
+                subCode: slot.subjectCode,
+              };
+            }
+          });
+        }
       });
     });
+  });
+
+  // Pass 3: Evaluate multi-faculty lab slots.
+  // If at least one faculty in assignedFac is free, the lab is covered by the available faculty!
+  // Only flags conflict if ALL assigned faculty are busy.
+  multiLabSlots.forEach(({ sec, d, p, slot, sub, assignedFac }) => {
+    const freeFacs = assignedFac.filter((fId) => !singleCommitments[fId]?.[d]?.[p]);
+
+    if (freeFacs.length > 0) {
+      // At least 1 faculty is available to handle this lab!
+      // Reserve the lead available faculty so they aren't double-assigned to another section
+      const leadFac = freeFacs[0];
+      if (!singleCommitments[leadFac]) singleCommitments[leadFac] = {};
+      if (!singleCommitments[leadFac][d]) singleCommitments[leadFac][d] = {};
+      singleCommitments[leadFac][d][p] = {
+        type: 'lab',
+        secId: sec.id,
+        secName: sec.name,
+        subCode: slot.subjectCode,
+      };
+    } else {
+      // All faculty are unavailable
+      const facNames = assignedFac
+        .map((id) => faculty.find((f) => f.id === id)?.name || id)
+        .join(', ');
+      conflicts.push({
+        sectionId: sec.id,
+        sectionName: sec.name,
+        subjectCode: slot.subjectCode,
+        subjectName: sub?.name || slot.subjectCode,
+        type: 'lab',
+        day: d,
+        period: p,
+        labBlockId: slot.labBlockId,
+        message: `In "${sec.name}", all assigned lab faculty [${facNames}] for "${sub?.name || slot.subjectCode}" are unavailable on ${d} Period ${p}.`,
+      });
+    }
   });
 
   return conflicts;
@@ -527,33 +667,77 @@ function solveSectionWithFastState({
             : [];
 
         // Zero Faculty Collisions Check
-        for (const fId of assignedFac) {
-          const occ = facultyBusy[fId]?.[d]?.[p];
-          if (occ && occ.sectionId !== sec.id) {
-            // Collision with another section or external locked load
+        if (slot.type === 'lab' && assignedFac.length > 1) {
+          // Multi-faculty lab: 1 free faculty is sufficient to conduct the lab!
+          const freeFacs = assignedFac.filter((fId) => {
+            const occ = facultyBusy[fId]?.[d]?.[p];
+            return !occ || occ.sectionId === sec.id;
+          });
+          if (freeFacs.length === 0) {
+            // ALL assigned faculty are busy! Collision
             assignedHistory.forEach(({ day, period, fId: fac }) => {
               delete facultyBusy[fac][day][period];
             });
-            const facObj = faculty.find((f) => f.id === fId);
-            const facName = facObj ? facObj.name : fId;
-            const collisionDetail = occ.isExternalLocked
-              ? `Faculty ${facName} has an external locked slot (${occ.dept || 'External'}) on ${d} Period ${p}.`
-              : `Faculty ${facName} is already assigned to section "${occ.sectionId}" on ${d} Period ${p}.`;
-
+            const facNames = assignedFac
+              .map((id) => faculty.find((f) => f.id === id)?.name || id)
+              .join(', ');
             return {
               success: false,
-              reason: `Collision for ${facName} at ${d} P${p}`,
-              detail: `Section "${sec.name}" cannot place prefixed ${slot.type} slot for "${sub ? sub.name : slot.subjectCode}" at ${d} Period ${p}. ${collisionDetail}`,
+              reason: `Collision for lab faculty [${facNames}] at ${d} P${p}`,
+              detail: `Section "${sec.name}" cannot place prefixed lab "${sub ? sub.name : slot.subjectCode}" at ${d} Period ${p}. All assigned faculty [${facNames}] are occupied elsewhere.`,
               failedSectionId: sec.id,
               failedSectionName: sec.name,
-              failedFacultyId: fId,
-              failedFacultyName: facName,
+              failedFacultyId: assignedFac[0],
+              failedFacultyName: facNames,
               failedSubject: slot.subjectCode,
               failedSubjectName: sub ? sub.name : slot.subjectCode,
               failedDay: d,
               failedPeriod: p,
             };
           }
+          // Mark all free faculty for this section
+          freeFacs.forEach((fId) => {
+            if (facultyBusy[fId]) {
+              facultyBusy[fId][d][p] = { sectionId: sec.id, subjectCode: slot.subjectCode, isPrefixed: true };
+              assignedHistory.push({ day: d, period: p, fId });
+            }
+          });
+        } else {
+          for (const fId of assignedFac) {
+            const occ = facultyBusy[fId]?.[d]?.[p];
+            if (occ && occ.sectionId !== sec.id) {
+              // Collision with another section or external locked load
+              assignedHistory.forEach(({ day, period, fId: fac }) => {
+                delete facultyBusy[fac][day][period];
+              });
+              const facObj = faculty.find((f) => f.id === fId);
+              const facName = facObj ? facObj.name : fId;
+              const collisionDetail = occ.isExternalLocked
+                ? `Faculty ${facName} has an external locked slot (${occ.dept || 'External'}) on ${d} Period ${p}.`
+                : `Faculty ${facName} is already assigned to section "${occ.sectionId}" on ${d} Period ${p}.`;
+
+              return {
+                success: false,
+                reason: `Collision for ${facName} at ${d} P${p}`,
+                detail: `Section "${sec.name}" cannot place prefixed ${slot.type} slot for "${sub ? sub.name : slot.subjectCode}" at ${d} Period ${p}. ${collisionDetail}`,
+                failedSectionId: sec.id,
+                failedSectionName: sec.name,
+                failedFacultyId: fId,
+                failedFacultyName: facName,
+                failedSubject: slot.subjectCode,
+                failedSubjectName: sub ? sub.name : slot.subjectCode,
+                failedDay: d,
+                failedPeriod: p,
+              };
+            }
+          }
+
+          assignedFac.forEach((fId) => {
+            if (facultyBusy[fId]) {
+              facultyBusy[fId][d][p] = { sectionId: sec.id, subjectCode: slot.subjectCode, isPrefixed: true };
+              assignedHistory.push({ day: d, period: p, fId });
+            }
+          });
         }
 
         grid[d][p] = {
@@ -567,13 +751,6 @@ function solveSectionWithFastState({
         };
 
         registerSlotInTracking(slot.subjectCode, d, p);
-
-        assignedFac.forEach((fId) => {
-          if (facultyBusy[fId]) {
-            facultyBusy[fId][d][p] = { sectionId: sec.id, subjectCode: slot.subjectCode, isPrefixed: true };
-            assignedHistory.push({ day: d, period: p, fId });
-          }
-        });
       }
     }
   }
@@ -682,30 +859,32 @@ function solveSectionWithFastState({
         const openInSec = periods.every((p) => grid[day][p] === null);
         if (!openInSec) continue;
 
-        let facFree = true;
-        for (const p of periods) {
-          for (const fId of facultyIds) {
-            if (facultyBusy[fId]?.[day]?.[p]) {
-              facFree = false;
-              break;
-            }
-          }
-          if (!facFree) break;
+        let availableFacs = facultyIds;
+        if (facultyIds.length > 1) {
+          // Multi-faculty lab: 1 free faculty is sufficient to conduct the lab!
+          availableFacs = facultyIds.filter((fId) =>
+            periods.every((p) => !facultyBusy[fId]?.[day]?.[p])
+          );
+          if (availableFacs.length === 0) continue; // No faculty available for all periods
+        } else {
+          // Single faculty: must be free for all periods
+          const fId = facultyIds[0];
+          if (fId && periods.some((p) => facultyBusy[fId]?.[day]?.[p])) continue;
         }
-        if (!facFree) continue;
 
+        const activeFacs = availableFacs.length > 0 ? availableFacs : facultyIds;
         const blockId = `${subjectCode}_${day}_${periods[0]}`;
         periods.forEach((p) => {
           grid[day][p] = {
             subjectCode,
             subjectName,
             type: 'lab',
-            facultyIds,
+            facultyIds: activeFacs,
             isLocked: false,
             labBlockId: blockId,
           };
           registerSlotInTracking(subjectCode, day, p);
-          facultyIds.forEach((fId) => {
+          activeFacs.forEach((fId) => {
             if (facultyBusy[fId]) {
               facultyBusy[fId][day][p] = { sectionId: sec.id, subjectCode };
               assignedHistory.push({ day, period: p, fId });
@@ -718,7 +897,7 @@ function solveSectionWithFastState({
         periods.forEach((p) => {
           grid[day][p] = null;
           unregisterSlotInTracking(subjectCode, day, p);
-          facultyIds.forEach((fId) => {
+          activeFacs.forEach((fId) => {
             if (facultyBusy[fId]) delete facultyBusy[fId][day][p];
           });
         });
@@ -1166,8 +1345,12 @@ export const detectSchedulingConflicts = ({
   });
 
   // 3. Prefixed Slots Conflict Analysis (Proactive Gatekeeper)
+  // Multi-faculty labs: 1 free faculty is sufficient to conduct the lab.
+  // Only flags collision if ALL assigned lab faculty are unavailable!
   const prefixTracker = {}; // fId -> day -> period -> { secId, secName, subCode, subName }
+  const multiLabSlots = [];
 
+  // Pass 1: Register single-instructor prefixed slots & queue multi-faculty lab slots
   targetSections.forEach((sec) => {
     const secPrefixed = prefixedSlots[sec.id] || {};
     const secAlloc = allocations[sec.id] || {};
@@ -1180,75 +1363,121 @@ export const detectSchedulingConflicts = ({
 
         const sub = subjects.find((s) => s.code === slot.subjectCode);
         const alloc = secAlloc[slot.subjectCode] || {};
-        const assignedFac =
-          slot.type === 'lab'
-            ? alloc.labFaculty || []
-            : alloc.theoryFaculty
-            ? [alloc.theoryFaculty]
-            : [];
+        const slotType = slot.type || (slot.labBlockId ? 'lab' : 'theory');
+        const assignedFac = getSubjectAssignedFaculty(alloc, sub, slotType);
 
-        assignedFac.forEach((fId) => {
-          const fac = faculty.find((f) => f.id === fId);
-          if (!fac) return;
+        if (slotType === 'lab' && assignedFac.length > 1) {
+          multiLabSlots.push({ sec, d, p, slot, sub, assignedFac });
+        } else {
+          assignedFac.forEach((fId) => {
+            const fac = faculty.find((f) => f.id === fId);
+            if (!fac) return;
 
-          // Check if faculty has an external locked slot at this exact day & period
-          const lockedSlot = (fac.lockedSlots || []).find(
-            (ls) => ls.day === d && Number(ls.period) === Number(p)
-          );
-          if (lockedSlot) {
-            conflicts.push({
-              type: 'PREFIX_LOCKED_COLLISION',
-              severity: 'error',
-              sectionId: sec.id,
-              sectionName: sec.name,
-              facultyId: fId,
-              facultyName: fac.name,
-              subjectCode: slot.subjectCode,
-              subjectName: sub ? sub.name : slot.subjectCode,
-              day: d,
-              period: p,
-              lockedDept: lockedSlot.dept || 'External',
-              title: `Prefixed vs Locked Slot Conflict: ${fac.name}`,
-              message: `In "${sec.name}", ${slot.type} subject "${sub ? sub.name : slot.subjectCode}" is prefixed on ${d} Period ${p}, but ${fac.name} is locked in ${lockedSlot.dept || 'External'} department during that hour.`,
-              solution: `Go to Step 5 (Prefix & Tally) and move or remove the prefixed slot, or go to Step 1 (Faculty) to update ${fac.name}'s locked hours.`,
-              step: 5,
-            });
-          }
+            // Check if faculty has an external locked slot at this exact day & period
+            const lockedSlot = (fac.lockedSlots || []).find(
+              (ls) => ls.day === d && Number(ls.period) === Number(p)
+            );
+            if (lockedSlot) {
+              conflicts.push({
+                type: 'PREFIX_LOCKED_COLLISION',
+                severity: 'error',
+                sectionId: sec.id,
+                sectionName: sec.name,
+                facultyId: fId,
+                facultyName: fac.name,
+                subjectCode: slot.subjectCode,
+                subjectName: sub ? sub.name : slot.subjectCode,
+                day: d,
+                period: p,
+                lockedDept: lockedSlot.dept || 'External',
+                title: `Prefixed vs Locked Slot Conflict: ${fac.name}`,
+                message: `In "${sec.name}", ${slotType} subject "${sub ? sub.name : slot.subjectCode}" is prefixed on ${d} Period ${p}, but ${fac.name} is locked in ${lockedSlot.dept || 'External'} department during that hour.`,
+                solution: `Go to Step 5 (Prefix & Tally) and move or remove the prefixed slot, or go to Step 1 (Faculty) to update ${fac.name}'s locked hours.`,
+                step: 5,
+              });
+            }
 
-          // Check if faculty is already prefixed in another section at the exact same day & period
-          if (!prefixTracker[fId]) prefixTracker[fId] = {};
-          if (!prefixTracker[fId][d]) prefixTracker[fId][d] = {};
-          if (prefixTracker[fId][d][p]) {
-            const prev = prefixTracker[fId][d][p];
-            conflicts.push({
-              type: 'CROSS_SECTION_PREFIX_COLLISION',
-              severity: 'error',
-              sectionId: sec.id,
-              sectionName: sec.name,
-              otherSectionId: prev.secId,
-              otherSectionName: prev.secName,
-              facultyId: fId,
-              facultyName: fac.name,
-              subjectCode: slot.subjectCode,
-              subjectName: sub ? sub.name : slot.subjectCode,
-              day: d,
-              period: p,
-              title: `Double-Booked Prefixed Slots: ${fac.name}`,
-              message: `Faculty ${fac.name} is prefixed to teach at the same time (${d} Period ${p}) in both "${sec.name}" and "${prev.secName}".`,
-              solution: `Go to Step 5 (Prefix & Tally) and stagger the prefixed slots across different periods or days.`,
-              step: 5,
-            });
-          } else {
-            prefixTracker[fId][d][p] = {
-              secId: sec.id,
-              secName: sec.name,
-              subCode: slot.subjectCode,
-              subName: sub ? sub.name : slot.subjectCode,
-            };
-          }
-        });
+            // Check if faculty is already prefixed in another section at the exact same day & period
+            if (!prefixTracker[fId]) prefixTracker[fId] = {};
+            if (!prefixTracker[fId][d]) prefixTracker[fId][d] = {};
+            if (prefixTracker[fId][d][p]) {
+              const prev = prefixTracker[fId][d][p];
+              conflicts.push({
+                type: 'CROSS_SECTION_PREFIX_COLLISION',
+                severity: 'error',
+                sectionId: sec.id,
+                sectionName: sec.name,
+                otherSectionId: prev.secId,
+                otherSectionName: prev.secName,
+                facultyId: fId,
+                facultyName: fac.name,
+                subjectCode: slot.subjectCode,
+                subjectName: sub ? sub.name : slot.subjectCode,
+                day: d,
+                period: p,
+                title: `Double-Booked Prefixed Slots: ${fac.name}`,
+                message: `Faculty ${fac.name} is prefixed to teach at the same time (${d} Period ${p}) in both "${sec.name}" and "${prev.secName}".`,
+                solution: `Go to Step 5 (Prefix & Tally) and stagger the prefixed slots across different periods or days.`,
+                step: 5,
+              });
+            } else {
+              prefixTracker[fId][d][p] = {
+                secId: sec.id,
+                secName: sec.name,
+                subCode: slot.subjectCode,
+                subName: sub ? sub.name : slot.subjectCode,
+              };
+            }
+          });
+        }
       }
     });
+  });
+
+  // Pass 2: Evaluate multi-faculty lab slots.
+  // If at least one faculty in assignedFac is free, no conflict!
+  multiLabSlots.forEach(({ sec, d, p, slot, sub, assignedFac }) => {
+    const freeFacs = assignedFac.filter((fId) => {
+      const fac = faculty.find((f) => f.id === fId);
+      const isExtLocked = (fac?.lockedSlots || []).some(
+        (ls) => ls.day === d && Number(ls.period) === Number(p)
+      );
+      const isCommittedElsewhere = !!prefixTracker[fId]?.[d]?.[p];
+      return !isExtLocked && !isCommittedElsewhere;
+    });
+
+    if (freeFacs.length > 0) {
+      // 1 faculty is sufficient to maintain the lab!
+      const leadFac = freeFacs[0];
+      if (!prefixTracker[leadFac]) prefixTracker[leadFac] = {};
+      if (!prefixTracker[leadFac][d]) prefixTracker[leadFac][d] = {};
+      prefixTracker[leadFac][d][p] = {
+        secId: sec.id,
+        secName: sec.name,
+        subCode: slot.subjectCode,
+        subName: sub ? sub.name : slot.subjectCode,
+      };
+    } else {
+      const facNames = assignedFac
+        .map((id) => faculty.find((f) => f.id === id)?.name || id)
+        .join(', ');
+      conflicts.push({
+        type: 'CROSS_SECTION_PREFIX_COLLISION',
+        severity: 'error',
+        sectionId: sec.id,
+        sectionName: sec.name,
+        facultyId: assignedFac[0],
+        facultyName: facNames,
+        subjectCode: slot.subjectCode,
+        subjectName: sub ? sub.name : slot.subjectCode,
+        day: d,
+        period: p,
+        title: `All Lab Faculty Busy: [${facNames}]`,
+        message: `In "${sec.name}", all assigned lab faculty [${facNames}] for "${sub ? sub.name : slot.subjectCode}" are unavailable on ${d} Period ${p}.`,
+        solution: `Go to Step 5 (Prefix & Tally) and move this lab block, or adjust faculty mapping in Step 4.`,
+        step: 5,
+      });
+    }
   });
 
   return conflicts;
@@ -1373,15 +1602,35 @@ export const generateDepartmentTimetable = ({
               ? [alloc.theoryFaculty]
               : [];
 
-          assignedFac.forEach((fId) => {
-            if (baseFacultyBusy[fId]) {
-              baseFacultyBusy[fId][d][p] = {
-                sectionId: sec.id,
-                subjectCode: slot.subjectCode,
-                isPrefixed: true,
-              };
-            }
-          });
+          if (slot.type === 'lab' && assignedFac.length > 1) {
+            // Multi-faculty lab: mark faculty who are available at this slot
+            const freeFacs = assignedFac.filter((fId) => {
+              const isExt = faculty.find((f) => f.id === fId)?.lockedSlots?.some(
+                (ls) => ls.day === d && Number(ls.period) === Number(p)
+              );
+              return !isExt && !baseFacultyBusy[fId]?.[d]?.[p];
+            });
+            const toMark = freeFacs.length > 0 ? freeFacs : [assignedFac[0]];
+            toMark.forEach((fId) => {
+              if (baseFacultyBusy[fId]) {
+                baseFacultyBusy[fId][d][p] = {
+                  sectionId: sec.id,
+                  subjectCode: slot.subjectCode,
+                  isPrefixed: true,
+                };
+              }
+            });
+          } else {
+            assignedFac.forEach((fId) => {
+              if (baseFacultyBusy[fId]) {
+                baseFacultyBusy[fId][d][p] = {
+                  sectionId: sec.id,
+                  subjectCode: slot.subjectCode,
+                  isPrefixed: true,
+                };
+              }
+            });
+          }
         }
       }
     }
@@ -1543,43 +1792,69 @@ export const validateSwap = ({
   }
 
   if (slot1?.facultyIds) {
-    for (const facId of slot1.facultyIds) {
-      const busy = isFacultyBusy(
-        facId,
-        day2,
-        period2,
-        timetables,
-        allFaculty,
-        sectionId,
-        period1
+    if (slot1.type === 'lab' && slot1.facultyIds.length > 1) {
+      const freeFacs = slot1.facultyIds.filter(
+        (facId) =>
+          !isFacultyBusy(facId, day2, period2, timetables, allFaculty, sectionId, period1).busy
       );
-      if (busy.busy) {
-        const facObj = allFaculty.find((f) => f.id === facId);
+      if (freeFacs.length === 0) {
         return {
           allowed: false,
-          reason: `Faculty ${facObj?.name || facId} is collision-blocked at ${day2} Period ${period2}: ${busy.reason}`,
+          reason: `All assigned lab faculty are collision-blocked at ${day2} Period ${period2}.`,
         };
+      }
+    } else {
+      for (const facId of slot1.facultyIds) {
+        const busy = isFacultyBusy(
+          facId,
+          day2,
+          period2,
+          timetables,
+          allFaculty,
+          sectionId,
+          period1
+        );
+        if (busy.busy) {
+          const facObj = allFaculty.find((f) => f.id === facId);
+          return {
+            allowed: false,
+            reason: `Faculty ${facObj?.name || facId} is collision-blocked at ${day2} Period ${period2}: ${busy.reason}`,
+          };
+        }
       }
     }
   }
 
   if (slot2?.facultyIds) {
-    for (const facId of slot2.facultyIds) {
-      const busy = isFacultyBusy(
-        facId,
-        day1,
-        period1,
-        timetables,
-        allFaculty,
-        sectionId,
-        period2
+    if (slot2.type === 'lab' && slot2.facultyIds.length > 1) {
+      const freeFacs = slot2.facultyIds.filter(
+        (facId) =>
+          !isFacultyBusy(facId, day1, period1, timetables, allFaculty, sectionId, period2).busy
       );
-      if (busy.busy) {
-        const facObj = allFaculty.find((f) => f.id === facId);
+      if (freeFacs.length === 0) {
         return {
           allowed: false,
-          reason: `Faculty ${facObj?.name || facId} is collision-blocked at ${day1} Period ${period1}: ${busy.reason}`,
+          reason: `All assigned lab faculty are collision-blocked at ${day1} Period ${period1}.`,
         };
+      }
+    } else {
+      for (const facId of slot2.facultyIds) {
+        const busy = isFacultyBusy(
+          facId,
+          day1,
+          period1,
+          timetables,
+          allFaculty,
+          sectionId,
+          period2
+        );
+        if (busy.busy) {
+          const facObj = allFaculty.find((f) => f.id === facId);
+          return {
+            allowed: false,
+            reason: `Faculty ${facObj?.name || facId} is collision-blocked at ${day1} Period ${period1}: ${busy.reason}`,
+          };
+        }
       }
     }
   }

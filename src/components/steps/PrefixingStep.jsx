@@ -885,6 +885,14 @@ export const PrefixingStep = ({
                               <div className={`text-[10px] font-medium ${check.allowed ? 'text-purple-600' : 'text-slate-500'}`}>
                                 Requires {sub.labHours} continuous periods block ({periodsToLock.map((p) => `P${p}`).join(', ')})
                               </div>
+                              {check.allowed && check.availableFaculty && check.busyFaculty && check.busyFaculty.length > 0 && (
+                                <div className="text-[10px] text-emerald-700 font-semibold mt-1 flex items-center gap-1">
+                                  <span>✓ Available to conduct lab:</span>
+                                  <span className="bg-emerald-100 text-emerald-800 px-1.5 py-0.5 rounded font-bold">
+                                    {check.availableFaculty.join(', ')}
+                                  </span>
+                                </div>
+                              )}
                             </div>
                             <div className="flex items-center gap-1.5 shrink-0">
                               {check.allowed ? (
