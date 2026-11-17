@@ -35,7 +35,34 @@ const getSectionMeta = (section) => {
 };
 
 // Helper to trigger browser download of formatted .doc file
-export const downloadWordDocument = (filename, htmlBody) => {
+export const downloadWordDocument = (filename, htmlBody, orientation = 'landscape') => {
+  const isPortrait = orientation === 'portrait';
+  const pageStyle = isPortrait
+    ? `
+        @page SectionPortrait {
+          size: 595.3pt 841.9pt;
+          mso-page-orientation: portrait;
+          margin: 1.0cm 0.8cm 1.0cm 0.8cm;
+          mso-header-margin: 36pt;
+          mso-footer-margin: 36pt;
+        }
+        div.SectionPortrait {
+          page: SectionPortrait;
+        }
+      `
+    : `
+        @page SectionLandscape {
+          size: 841.9pt 595.3pt;
+          mso-page-orientation: landscape;
+          margin: 1.2cm 1.2cm 1.2cm 1.2cm;
+          mso-header-margin: 36pt;
+          mso-footer-margin: 36pt;
+        }
+        div.SectionLandscape {
+          page: SectionLandscape;
+        }
+      `;
+
   const header = `
     <html xmlns:o='urn:schemas-microsoft-com:office:office' 
           xmlns:w='urn:schemas-microsoft-com:office:word' 
@@ -53,16 +80,7 @@ export const downloadWordDocument = (filename, htmlBody) => {
       </xml>
       <![endif]-->
       <style>
-        @page SectionLandscape {
-          size: 841.9pt 595.3pt;
-          mso-page-orientation: landscape;
-          margin: 1.2cm 1.2cm 1.2cm 1.2cm;
-          mso-header-margin: 36pt;
-          mso-footer-margin: 36pt;
-        }
-        div.SectionLandscape {
-          page: SectionLandscape;
-        }
+        ${pageStyle}
         .page-break {
           page-break-before: always;
           mso-break-type: section-break;
@@ -85,10 +103,10 @@ export const downloadWordDocument = (filename, htmlBody) => {
         }
         .grid-table th, .grid-table td {
           border: 1px solid #000;
-          padding: 5px 3px;
+          padding: 4px 2px;
           text-align: center;
           vertical-align: middle;
-          font-size: 8.5pt;
+          font-size: 8pt;
         }
         .grid-table th {
           background-color: #f1f5f9;
@@ -96,11 +114,11 @@ export const downloadWordDocument = (filename, htmlBody) => {
         }
         .sub-table {
           margin-top: 4px;
-          margin-bottom: 12px;
+          margin-bottom: 10px;
         }
         .sub-table th, .sub-table td {
           border: 1px solid #333;
-          padding: 3px 6px;
+          padding: 3px 5px;
           font-size: 8pt;
         }
         .sub-table th {
@@ -124,7 +142,7 @@ export const downloadWordDocument = (filename, htmlBody) => {
           width: 100%;
           border: none;
           margin-bottom: 4px;
-          font-size: 9.5pt;
+          font-size: 9pt;
           font-weight: bold;
         }
         .meta-bar td {
@@ -134,20 +152,19 @@ export const downloadWordDocument = (filename, htmlBody) => {
         .sig-bar {
           width: 100%;
           border: none;
-          margin-top: 18px;
-          font-size: 9.5pt;
+          margin-top: 16px;
+          font-size: 9pt;
           font-weight: bold;
           text-align: center;
         }
         .sig-bar td {
           border: none;
-          padding: 6px 0;
-          width: 20%;
+          padding: 4px 0;
         }
       </style>
     </head>
     <body>
-      <div class="SectionLandscape">
+      <div class="${isPortrait ? 'SectionPortrait' : 'SectionLandscape'}">
         ${htmlBody}
       </div>
     </body>
@@ -398,7 +415,7 @@ export const exportAllSectionsToWord = (sections, timetables, subjects, faculty)
   downloadWordDocument('Overall_All_Sections_Timetable.doc', docContent);
 };
 
-// 2. Export All Faculty Timetables to Word (.doc)
+// 2. Export All Faculty Timetables to Word (.doc) in compact Portrait format
 export const exportAllFacultyToWord = (faculty, timetables, subjects, sections) => {
   if (!faculty || faculty.length === 0) return;
 
@@ -449,7 +466,7 @@ export const exportAllFacultyToWord = (faculty, timetables, subjects, sections) 
             (ls) => ls.day === day && Number(ls.period) === Number(p)
           );
           if (ext) {
-            parts.push(`[LOCKED ${ext.dept}]`);
+            parts.push(`[LOCKED]<br/><span style="font-size:6.5pt;">${ext.dept}</span>`);
           }
         }
         Object.entries(timetables).forEach(([secId, secGrid]) => {
@@ -458,7 +475,8 @@ export const exportAllFacultyToWord = (faculty, timetables, subjects, sections) 
             const sub = subjectsMap[slot.subjectCode];
             const acronym = getSubjectAcronym(sub?.name || slot.subjectName || slot.subjectCode, slot.subjectCode);
             const secName = sectionsMap[secId]?.name || secId;
-            parts.push(`${slot.subjectCode} (${acronym}) - ${secName}`);
+            const tag = slot.type === 'lab' ? '[LAB]' : '[TH]';
+            parts.push(`<b>${slot.subjectCode}</b><br/>(${acronym}) ${tag}<br/><span style="font-size:6.5pt; color:#334155;">${secName}</span>`);
           }
         });
         return parts.length > 0 ? parts.join('<br/>') : 'FREE';
@@ -467,25 +485,33 @@ export const exportAllFacultyToWord = (faculty, timetables, subjects, sections) 
       let cells = '';
       for (let p = 1; p <= 4; p++) {
         const c = getCommitments(p);
-        const style = c.includes('[LOCKED') ? 'background-color:#fee2e2; font-weight:bold;' : c !== 'FREE' ? 'background-color:#e0e7ff; font-weight:bold;' : 'color:#94a3b8;';
+        const style = c.includes('[LOCKED')
+          ? 'background-color:#fee2e2; color:#be123c; font-weight:bold; font-size:7pt; padding:3px 1px;'
+          : c !== 'FREE'
+          ? 'background-color:#e0e7ff; color:#1e1b4b; font-size:7pt; padding:3px 1px;'
+          : 'color:#94a3b8; font-size:7pt; padding:3px 1px;';
         cells += `<td style="${style}">${c}</td>`;
       }
 
-      cells += `<td style="background-color:#fef3c7; font-weight:bold; font-size:7.5pt;">LUNCH</td>`;
+      cells += `<td style="background-color:#fef3c7; color:#92400e; font-weight:bold; font-size:7pt; padding:3px 1px;">LUNCH<br/>BREAK</td>`;
 
       if (day === 'Saturday') {
-        cells += `<td colspan="3" style="background-color:#f1f5f9; color:#94a3b8;">INACTIVE</td>`;
+        cells += `<td colspan="3" style="background-color:#f1f5f9; color:#94a3b8; font-size:7pt; padding:3px 1px;">INACTIVE</td>`;
       } else {
         for (let p = 5; p <= 7; p++) {
           const c = getCommitments(p);
-          const style = c.includes('[LOCKED') ? 'background-color:#fee2e2; font-weight:bold;' : c !== 'FREE' ? 'background-color:#e0e7ff; font-weight:bold;' : 'color:#94a3b8;';
+          const style = c.includes('[LOCKED')
+            ? 'background-color:#fee2e2; color:#be123c; font-weight:bold; font-size:7pt; padding:3px 1px;'
+            : c !== 'FREE'
+            ? 'background-color:#e0e7ff; color:#1e1b4b; font-size:7pt; padding:3px 1px;'
+            : 'color:#94a3b8; font-size:7pt; padding:3px 1px;';
           cells += `<td style="${style}">${c}</td>`;
         }
       }
 
       gridRowsHtml += `
         <tr>
-          <td style="font-weight:bold; background-color:#f8fafc;">${day.toUpperCase()}</td>
+          <td style="font-weight:bold; background-color:#f8fafc; font-size:7.5pt; padding:3px 2px;">${day.toUpperCase()}</td>
           ${cells}
         </tr>
       `;
@@ -496,7 +522,7 @@ export const exportAllFacultyToWord = (faculty, timetables, subjects, sections) 
       breakdownRowsHtml += `
         <tr>
           <td style="font-weight:bold;">${item.code}</td>
-          <td style="text-align:left; padding-left:8px;">${item.name}</td>
+          <td style="text-align:left; padding-left:6px;">${item.name}</td>
           <td>${item.sectionName}</td>
           <td>${item.type}</td>
           <td style="font-weight:bold;">${item.hours} hrs/week</td>
@@ -506,11 +532,11 @@ export const exportAllFacultyToWord = (faculty, timetables, subjects, sections) 
 
     docContent += `
       ${pageBreakHtml}
-      <div style="margin-bottom: 20px;">
-        <table style="width:100%; border:none; margin-bottom:4px;">
+      <div style="margin-bottom: 15px;">
+        <table style="width:100%; border:none; margin-bottom:2px;">
           <tr>
-            <td style="border:none; text-align:left; font-size:12pt; font-weight:bold; width:70%;">
-              ADHIYAMAAN COLLEGE OF ENGINEERING - FACULTY SCHEDULE
+            <td style="border:none; text-align:left; font-size:11pt; font-weight:bold; width:70%;">
+              ADHIYAMAAN COLLEGE OF ENGINEERING (Autonomous)
             </td>
             <td style="border:none; text-align:right; font-size:10pt; font-weight:bold; width:30%;">
               AY: 2026-2027
@@ -518,11 +544,11 @@ export const exportAllFacultyToWord = (faculty, timetables, subjects, sections) 
           </tr>
         </table>
 
-        <div style="font-size:13pt; font-weight:bold; text-align:center; margin:4px 0 8px 0; color:#1e293b;">
+        <div style="font-size:12pt; font-weight:bold; text-align:center; margin:2px 0 4px 0; color:#1e293b;">
           ${facultyMember.name.toUpperCase()} (${facultyMember.department})
         </div>
 
-        <table style="width:100%; border:none; margin-bottom:8px; font-size:9.5pt; font-weight:bold;">
+        <table style="width:100%; border:none; margin-bottom:5px; font-size:8.5pt; font-weight:bold;">
           <tr>
             <td style="border:none; text-align:left; width:33%;">Faculty ID: ${facultyMember.id}</td>
             <td style="border:none; text-align:center; width:34%;">Designation: ${facultyMember.designation || 'Faculty'}</td>
@@ -530,18 +556,18 @@ export const exportAllFacultyToWord = (faculty, timetables, subjects, sections) 
           </tr>
         </table>
 
-        <table class="grid-table">
+        <table class="grid-table" style="font-size:7.5pt; width:100%;">
           <thead>
             <tr>
               <th style="width:12%;">Day</th>
-              <th style="width:11%;">Period 1<br/>09:00 - 09:50</th>
-              <th style="width:11%;">Period 2<br/>09:50 - 10:40</th>
-              <th style="width:11%;">Period 3<br/>10:55 - 11:45</th>
-              <th style="width:11%;">Period 4<br/>11:45 - 12:35</th>
-              <th style="width:6%;">Lunch</th>
-              <th style="width:11%;">Period 5<br/>01:25 - 02:15</th>
-              <th style="width:11%;">Period 6<br/>02:15 - 03:05</th>
-              <th style="width:11%;">Period 7<br/>03:05 - 03:55</th>
+              <th style="width:11.5%;">P1<br/><span style="font-size:6.5pt; font-weight:normal;">08:30-09:25</span></th>
+              <th style="width:11.5%;">P2<br/><span style="font-size:6.5pt; font-weight:normal;">09:25-10:20</span></th>
+              <th style="width:11.5%;">P3<br/><span style="font-size:6.5pt; font-weight:normal;">10:30-11:25</span></th>
+              <th style="width:11.5%;">P4<br/><span style="font-size:6.5pt; font-weight:normal;">11:25-12:20</span></th>
+              <th style="width:6.5%;">Lunch</th>
+              <th style="width:11.5%;">P5<br/><span style="font-size:6.5pt; font-weight:normal;">01:20-02:15</span></th>
+              <th style="width:11.5%;">P6<br/><span style="font-size:6.5pt; font-weight:normal;">02:15-03:10</span></th>
+              <th style="width:11.5%;">P7<br/><span style="font-size:6.5pt; font-weight:normal;">03:10-04:05</span></th>
             </tr>
           </thead>
           <tbody>
@@ -552,21 +578,21 @@ export const exportAllFacultyToWord = (faculty, timetables, subjects, sections) 
         ${
           Object.keys(subjectsTaughtMap).length > 0
             ? `
-          <div style="font-size:9.5pt; font-weight:bold; margin-top:10px; margin-bottom:4px;">Teaching Load Breakdown:</div>
-          <table class="sub-table">
+          <div style="font-size:8.5pt; font-weight:bold; margin-top:6px; margin-bottom:2px;">Teaching Load Breakdown:</div>
+          <table class="sub-table" style="font-size:7.5pt; width:100%;">
             <thead>
               <tr>
-                <th style="width:15%;">Subject Code</th>
-                <th style="width:40%;">Subject Title</th>
+                <th style="width:16%;">Subject Code</th>
+                <th style="width:38%;">Subject Title</th>
                 <th style="width:20%;">Class Section</th>
                 <th style="width:12%;">Type</th>
-                <th style="width:13%;">Weekly Load</th>
+                <th style="width:14%;">Weekly Load</th>
               </tr>
             </thead>
             <tbody>
               ${breakdownRowsHtml}
               <tr style="font-weight:bold; background-color:#f1f5f9;">
-                <td colspan="4" style="text-align:right; padding-right:12px;">TOTAL TEACHING LOAD (${internalHours}h Internal + ${externalHours}h Other Dept):</td>
+                <td colspan="4" style="text-align:right; padding-right:8px;">TOTAL LOAD (${internalHours}h Internal + ${externalHours}h Other Dept):</td>
                 <td>${totalLoad} / ${facultyMember.maxHours || 20} hrs</td>
               </tr>
             </tbody>
@@ -575,7 +601,7 @@ export const exportAllFacultyToWord = (faculty, timetables, subjects, sections) 
             : ''
         }
 
-        <table class="sig-bar" style="margin-top:25px;">
+        <table class="sig-bar" style="margin-top:16px; font-size:8.5pt;">
           <tr>
             <td style="width:33%;">Faculty Member Signature</td>
             <td style="width:33%;">Timetable Coordinator</td>
@@ -586,5 +612,11 @@ export const exportAllFacultyToWord = (faculty, timetables, subjects, sections) 
     `;
   });
 
-  downloadWordDocument('Overall_All_Faculty_Timetables.doc', docContent);
+  downloadWordDocument('Overall_All_Faculty_Timetables.doc', docContent, 'portrait');
+};
+
+// 3. Export Single Faculty Timetable to Word (.doc) in compact Portrait format
+export const exportSelectedFacultyTimetableToWord = (facultyMember, timetables, subjects, sections) => {
+  if (!facultyMember) return;
+  exportAllFacultyToWord([facultyMember], timetables, subjects, sections);
 };

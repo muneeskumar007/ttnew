@@ -329,11 +329,11 @@ export const exportAllSectionsToPdf = (sections, timetables, subjects, faculty) 
   doc.save('Overall_All_Sections_Timetable.pdf');
 };
 
-// 2. Export All Faculty Timetables to PDF (Consolidated single-click download)
+// 2. Export All Faculty Timetables to PDF (Consolidated single-click download in A4 portrait format)
 export const exportAllFacultyToPdf = (faculty, timetables, subjects, sections) => {
   if (!faculty || faculty.length === 0) return;
 
-  const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
+  const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
   const subjectsMap = Object.fromEntries(subjects.map((s) => [s.code, s]));
   const sectionsMap = Object.fromEntries(sections.map((s) => [s.id, s]));
   const pageWidth = doc.internal.pageSize.getWidth();
@@ -341,7 +341,7 @@ export const exportAllFacultyToPdf = (faculty, timetables, subjects, sections) =
 
   faculty.forEach((facultyMember, idx) => {
     if (idx > 0) {
-      doc.addPage('a4', 'landscape');
+      doc.addPage('a4', 'portrait');
     }
 
     let internalHours = 0;
@@ -374,34 +374,42 @@ export const exportAllFacultyToPdf = (faculty, timetables, subjects, sections) =
 
     const totalLoad = internalHours + externalHours;
 
-    // Header & Title Block
+    // Header & Title Block (Optimized for A4 portrait width)
     doc.setFont('times', 'bold');
-    doc.setFontSize(14);
-    doc.setTextColor(30, 41, 59);
-    doc.text(`ADHIYAMAAN COLLEGE OF ENGINEERING - FACULTY SCHEDULE`, 14, 13);
-    doc.setFontSize(11);
-    doc.text('AY: 2026-2027', pageWidth - 14, 13, { align: 'right' });
-
     doc.setFontSize(13);
-    doc.text(`FACULTY: ${facultyMember.name.toUpperCase()} (${facultyMember.department})`, pageWidth / 2, 20, { align: 'center' });
+    doc.setTextColor(30, 41, 59);
+    doc.text(`ADHIYAMAAN COLLEGE OF ENGINEERING`, pageWidth / 2, 12, { align: 'center' });
 
     doc.setFontSize(9.5);
+    doc.setTextColor(71, 85, 105);
+    doc.text('(An Autonomous Institution - Affiliated to Anna University, Chennai)', pageWidth / 2, 17, { align: 'center' });
+
+    doc.setFontSize(11);
+    doc.setTextColor(30, 41, 59);
+    doc.text(`FACULTY SCHEDULE — AY: 2026-2027`, pageWidth / 2, 23, { align: 'center' });
+
+    doc.setFontSize(11);
+    doc.setTextColor(79, 70, 229);
+    doc.text(`FACULTY: ${facultyMember.name.toUpperCase()} (${facultyMember.department})`, pageWidth / 2, 29, { align: 'center' });
+
+    doc.setFontSize(8.5);
     doc.setFont('times', 'normal');
-    doc.text(`Faculty ID: ${facultyMember.id}  |  Designation: ${facultyMember.designation || 'Faculty'}`, 14, 27);
-    doc.text(`Total Weekly Load: ${totalLoad}/${facultyMember.maxHours || 20} Hours`, pageWidth - 14, 27, { align: 'right' });
+    doc.setTextColor(51, 65, 85);
+    doc.text(`Faculty ID: ${facultyMember.id}  |  Designation: ${facultyMember.designation || 'Faculty'}`, 11, 35);
+    doc.text(`Total Weekly Load: ${totalLoad}/${facultyMember.maxHours || 20} Hours`, pageWidth - 11, 35, { align: 'right' });
 
     // Grid Columns & Head
     const head = [
       [
         'Day',
-        'Period 1\n09:00 - 09:50',
-        'Period 2\n09:50 - 10:40',
-        'Period 3\n10:55 - 11:45',
-        'Period 4\n11:45 - 12:35',
-        'LUNCH\n12:35 - 01:25',
-        'Period 5\n01:25 - 02:15',
-        'Period 6\n02:15 - 03:05',
-        'Period 7\n03:05 - 03:55',
+        'Period 1\n09:00-09:50',
+        'Period 2\n09:50-10:40',
+        'Period 3\n10:55-11:45',
+        'Period 4\n11:45-12:35',
+        'LUNCH\n12:35-01:25',
+        'Period 5\n01:25-02:15',
+        'Period 6\n02:15-03:05',
+        'Period 7\n03:05-03:55',
       ],
     ];
 
@@ -416,7 +424,7 @@ export const exportAllFacultyToPdf = (faculty, timetables, subjects, sections) =
             (ls) => ls.day === day && Number(ls.period) === Number(p)
           );
           if (ext) {
-            commitments.push(`[LOCKED]\n${ext.dept} Dept Load`);
+            commitments.push(`[LOCKED]\n${ext.dept}`);
           }
         }
         Object.entries(timetables).forEach(([secId, secGrid]) => {
@@ -451,27 +459,37 @@ export const exportAllFacultyToPdf = (faculty, timetables, subjects, sections) =
     });
 
     autoTable(doc, {
-      startY: 31,
+      startY: 38,
+      margin: { left: 11, right: 11 },
       head: head,
       body: body,
       theme: 'grid',
       styles: {
-        fontSize: 7.5,
-        cellPadding: 2,
+        fontSize: 6.5,
+        cellPadding: 1.5,
         halign: 'center',
         valign: 'middle',
         lineColor: [203, 213, 225],
-        lineWidth: 0.25,
+        lineWidth: 0.2,
+        overflow: 'linebreak',
       },
       headStyles: {
         fillColor: [30, 41, 59],
         textColor: [255, 255, 255],
         fontStyle: 'bold',
-        fontSize: 7.5,
+        fontSize: 6.5,
+        cellPadding: 1.5,
       },
       columnStyles: {
-        0: { fontStyle: 'bold', fillColor: [248, 250, 252], width: 22 },
-        5: { fillColor: [254, 243, 199], textColor: [180, 83, 9], fontStyle: 'bold', width: 14 },
+        0: { fontStyle: 'bold', fillColor: [248, 250, 252], cellWidth: 17 },
+        1: { cellWidth: 22.8 },
+        2: { cellWidth: 22.8 },
+        3: { cellWidth: 22.8 },
+        4: { cellWidth: 22.8 },
+        5: { fillColor: [254, 243, 199], textColor: [180, 83, 9], fontStyle: 'bold', cellWidth: 11 },
+        6: { cellWidth: 22.8 },
+        7: { cellWidth: 22.8 },
+        8: { cellWidth: 22.8 },
       },
       didParseCell: (data) => {
         if (data.section === 'body' && data.column.index !== 0 && data.column.index !== 5) {
@@ -486,6 +504,9 @@ export const exportAllFacultyToPdf = (faculty, timetables, subjects, sections) =
             data.cell.styles.fontStyle = 'bold';
           } else if (text === 'FREE') {
             data.cell.styles.textColor = [148, 163, 184];
+          } else if (text.includes('INACTIVE')) {
+            data.cell.styles.textColor = [148, 163, 184];
+            data.cell.styles.fillColor = [248, 250, 252];
           }
         }
       },
@@ -493,13 +514,13 @@ export const exportAllFacultyToPdf = (faculty, timetables, subjects, sections) =
 
     // Workload breakdown table
     const subjectList = Object.values(subjectsTaughtMap);
-    const summaryStartY = doc.lastAutoTable.finalY + 4;
+    const summaryStartY = doc.lastAutoTable.finalY + 6;
 
-    if (subjectList.length > 0 && summaryStartY < 170) {
+    if (subjectList.length > 0 && summaryStartY < 240) {
       doc.setFontSize(8.5);
       doc.setFont('times', 'bold');
       doc.setTextColor(30, 41, 59);
-      doc.text('Teaching Load Breakdown:', 14, summaryStartY);
+      doc.text('Teaching Load Breakdown:', 11, summaryStartY);
 
       const summaryHead = [['Subject Code', 'Subject Title', 'Class Section', 'Type', 'Weekly Hours']];
       const summaryBody = subjectList.map((item) => [
@@ -520,22 +541,30 @@ export const exportAllFacultyToPdf = (faculty, timetables, subjects, sections) =
 
       autoTable(doc, {
         startY: summaryStartY + 2,
+        margin: { left: 11, right: 11 },
         head: summaryHead,
         body: summaryBody,
         theme: 'striped',
-        styles: { fontSize: 7, cellPadding: 1.5 },
+        styles: { fontSize: 7, cellPadding: 1.8 },
         headStyles: { fillColor: [79, 70, 229] },
+        columnStyles: {
+          0: { fontStyle: 'bold', cellWidth: 24 },
+          1: { cellWidth: 68 },
+          2: { cellWidth: 44 },
+          3: { cellWidth: 24 },
+          4: { fontStyle: 'bold', halign: 'center', cellWidth: 27 },
+        },
       });
     }
 
     // Signatures
-    const sigY = pageHeight - 8;
+    const sigY = pageHeight - 16;
     doc.setFontSize(8.5);
     doc.setFont('times', 'bold');
     doc.setTextColor(71, 85, 105);
-    doc.text('Faculty Member Signature', 30, sigY, { align: 'center' });
-    doc.text('Timetable Coordinator', 148, sigY, { align: 'center' });
-    doc.text('HOD / Dean Approval', 250, sigY, { align: 'center' });
+    doc.text('Faculty Member Signature', 38, sigY, { align: 'center' });
+    doc.text('Timetable Coordinator', 105, sigY, { align: 'center' });
+    doc.text('HOD / Dean Approval', 172, sigY, { align: 'center' });
   });
 
   doc.save('Overall_All_Faculty_Timetables.pdf');

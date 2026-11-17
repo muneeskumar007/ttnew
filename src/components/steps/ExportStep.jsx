@@ -31,7 +31,8 @@ import {
 } from '../../services/pdfExport';
 import {
   exportAllSectionsToWord,
-  exportAllFacultyToWord
+  exportAllFacultyToWord,
+  exportSelectedFacultyTimetableToWord
 } from '../../services/wordExport';
 import { DAYS, DAY_PERIODS, sortSections } from '../../types/constants';
 
@@ -97,6 +98,12 @@ export const ExportStep = ({
   const handleExportSingleFacultyPdf = () => {
     if (activeFaculty) {
       exportSelectedFacultyTimetableToPdf(activeFaculty, timetables, subjects, sections);
+    }
+  };
+
+  const handleExportSingleFacultyWord = () => {
+    if (activeFaculty) {
+      exportSelectedFacultyTimetableToWord(activeFaculty, timetables, subjects, sections);
     }
   };
 
@@ -395,18 +402,24 @@ export const ExportStep = ({
                       </option>
                     ))}
                   </select>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <button
                       onClick={handleExportSingleFacultyPdf}
                       className="py-1.5 px-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold border border-rose-200 text-center"
                     >
-                      Single Faculty PDF
+                      Single PDF
+                    </button>
+                    <button
+                      onClick={handleExportSingleFacultyWord}
+                      className="py-1.5 px-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200 text-center"
+                    >
+                      Single Word
                     </button>
                     <button
                       onClick={handleExportSingleFacultyExcel}
                       className="py-1.5 px-2 rounded-lg bg-emerald-50 hover:bg-emerald-100 text-emerald-700 text-xs font-semibold border border-emerald-200 text-center"
                     >
-                      Single Faculty Excel
+                      Single Excel
                     </button>
                   </div>
                 </div>
