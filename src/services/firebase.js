@@ -3,12 +3,12 @@
 // Strictly NO LocalStorage or Local Database used.
 
 export const DEFAULT_FIREBASE_CONFIG = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY || "AIzaSyBmff-MIHbbKTC6zSVuTrsp3FY0t-CWB8k",
-  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || "hyoid-f67d0.firebaseapp.com",
-  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || "hyoid-f67d0",
-  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || "hyoid-f67d0.firebasestorage.app",
-  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || "794370439907",
-  appId: import.meta.env.VITE_FIREBASE_APP_ID || "1:794370439907:web:f6e4afed129d5dcc69e3d6"
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
+  projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
+  storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID,
+  appId: import.meta.env.VITE_FIREBASE_APP_ID
 };
 
 let activeFirebaseConfig = { ...DEFAULT_FIREBASE_CONFIG };
