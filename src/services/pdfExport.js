@@ -181,56 +181,56 @@ const renderOfficialSectionPage = (doc, section, timetable, subjectsMap, faculty
 
   // 1. Institution Header
   doc.setFont('times', 'bold');
-  doc.setFontSize(13);
+  doc.setFontSize(11);
   doc.setTextColor(0, 0, 0);
 
   // Line 1: College Title & Academic Year
-  doc.text('ADHIYAMAAN COLLEGE OF ENGINEERING (An Autonomous Institution)', 14, 13);
-  doc.text('AY: 2026-2027', pageWidth - 14, 13, { align: 'right' });
+  doc.text('ADHIYAMAAN COLLEGE OF ENGINEERING (An Autonomous Institution)', 12, 12);
+  doc.text('AY: 2026-2027', pageWidth - 12, 12, { align: 'right' });
 
   // Line 2: Document Title
-  doc.setFontSize(12);
-  doc.text('CLASS TIME TABLE (WEEK PLAN)', pageWidth / 2, 20, { align: 'center' });
+  doc.setFontSize(11);
+  doc.text('CLASS TIME TABLE (WEEK PLAN)', pageWidth / 2, 18, { align: 'center' });
 
   // Line 3: Meta bar
-  doc.setFontSize(10);
+  doc.setFontSize(9);
   const programText = `PROGRAM:  B.E-${section.department || 'CSE'}`;
-  const yearSemText = `Year/Semester:${yearSem}`;
+  const yearSemText = `Year/Semester: ${yearSem}`;
   const roomText = `Room No:  ${roomNo}`;
 
-  doc.text(programText, 14, 27);
-  doc.text(yearSemText, pageWidth / 2, 27, { align: 'center' });
-  doc.text(roomText, pageWidth - 14, 27, { align: 'right' });
+  doc.text(programText, 12, 24);
+  doc.text(yearSemText, pageWidth / 2, 24, { align: 'center' });
+  doc.text(roomText, pageWidth - 12, 24, { align: 'right' });
 
   // 2. Main Timetable Grid
   const head = [
     [
-      'DAY /PERIOD',
-      '1  8.30am-9.25am',
-      '2  9.25am-  10.20am',
-      '3  10.30am-11.25am',
-      '4  11.25am-12.20Pm',
-      'Lunch  break',
-      '5  1.20pm-2.15pm',
-      '6  2.15pm-3.10pm',
-      '7  3.10pm-4.05pm',
+      'DAY / PERIOD',
+      '1\n8.30-9.25',
+      '2\n9.25-10.20',
+      '3\n10.30-11.25',
+      '4\n11.25-12.20',
+      'Lunch\nbreak',
+      '5\n1.20-2.15',
+      '6\n2.15-3.10',
+      '7\n3.10-4.05',
     ],
   ];
 
   const body = buildSectionGridBody(timetable, subjectsMap, facultyMap);
 
   autoTable(doc, {
-    startY: 31,
+    startY: 28,
     head: head,
     body: body,
     theme: 'grid',
     styles: {
-      fontSize: 8.5,
-      cellPadding: 2.2,
+      fontSize: 7,
+      cellPadding: 1.5,
       halign: 'center',
       valign: 'middle',
       lineColor: [0, 0, 0],
-      lineWidth: 0.25,
+      lineWidth: 0.2,
       textColor: [0, 0, 0],
       font: 'times',
     },
@@ -238,15 +238,23 @@ const renderOfficialSectionPage = (doc, section, timetable, subjectsMap, faculty
       fillColor: [245, 245, 245],
       textColor: [0, 0, 0],
       fontStyle: 'bold',
-      fontSize: 8,
+      fontSize: 6.5,
       lineColor: [0, 0, 0],
-      lineWidth: 0.25,
+      lineWidth: 0.2,
+      cellPadding: 1.2,
     },
     columnStyles: {
-      0: { fontStyle: 'bold', width: 28 },
-      5: { fillColor: [248, 250, 252], width: 14 },
+      0: { fontStyle: 'bold', cellWidth: 18 },
+      1: { cellWidth: 22.2 },
+      2: { cellWidth: 22.2 },
+      3: { cellWidth: 22.2 },
+      4: { cellWidth: 22.2 },
+      5: { fillColor: [254, 243, 199], cellWidth: 12.6 },
+      6: { cellWidth: 22.2 },
+      7: { cellWidth: 22.2 },
+      8: { cellWidth: 22.2 },
     },
-    margin: { left: 14, right: 14 },
+    margin: { left: 12, right: 12 },
   });
 
   const timetableFinalY = doc.lastAutoTable.finalY;
@@ -282,25 +290,25 @@ const renderOfficialSectionPage = (doc, section, timetable, subjectsMap, faculty
       lineWidth: 0.2,
     },
     columnStyles: {
-      0: { fontStyle: 'bold', width: 34 },
-      1: { width: 140 },
-      2: { width: 95 },
+      0: { fontStyle: 'bold', cellWidth: 26 },
+      1: { cellWidth: 90 },
+      2: { cellWidth: 70 },
     },
-    margin: { left: 14, right: 14 },
+    margin: { left: 12, right: 12 },
   });
 
   // 4. Signatures Row at the bottom
-  const sigY = pageHeight - 8;
-  doc.setFontSize(9.5);
+  const sigY = pageHeight - 12;
+  doc.setFontSize(8.5);
   doc.setFont('times', 'bold');
   doc.setTextColor(0, 0, 0);
 
   const sigCols = [
-    { title: 'Class Advisor', x: 25 },
-    { title: 'Time Table Incharge', x: 80 },
-    { title: 'HOD', x: 148 },
-    { title: 'Dean (Academics)', x: 206 },
-    { title: 'Principal', x: 268 },
+    { title: 'Class Advisor', x: 22 },
+    { title: 'Time Table Incharge', x: 64 },
+    { title: 'HOD', x: 105 },
+    { title: 'Dean (Academics)', x: 146 },
+    { title: 'Principal', x: 188 },
   ];
 
   sigCols.forEach((sig) => {
@@ -308,11 +316,11 @@ const renderOfficialSectionPage = (doc, section, timetable, subjectsMap, faculty
   });
 };
 
-// 1. Export All Sections Timetable to PDF (Consolidated single-click download in exact uploaded format)
+// 1. Export All Sections Timetable to PDF (Consolidated single-click download in compact A4 Portrait format)
 export const exportAllSectionsToPdf = (sections, timetables, subjects, faculty) => {
   if (!sections || sections.length === 0) return;
 
-  const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
+  const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
   const facultyMap = Object.fromEntries(faculty.map((f) => [f.id, f]));
   const subjectsMap = Object.fromEntries(subjects.map((s) => [s.code, s]));
 
@@ -320,7 +328,7 @@ export const exportAllSectionsToPdf = (sections, timetables, subjects, faculty) 
 
   sorted.forEach((section, idx) => {
     if (idx > 0) {
-      doc.addPage('a4', 'landscape');
+      doc.addPage('a4', 'portrait');
     }
     const timetable = timetables[section.id] || {};
     renderOfficialSectionPage(doc, section, timetable, subjectsMap, facultyMap);
@@ -570,9 +578,9 @@ export const exportAllFacultyToPdf = (faculty, timetables, subjects, sections) =
   doc.save('Overall_All_Faculty_Timetables.pdf');
 };
 
-// 3. Export Single Section Timetable (Legacy helper)
+// 3. Export Single Section Timetable in compact A4 Portrait format
 export const exportSectionToPdf = (section, timetable, subjects, faculty) => {
-  const doc = new jsPDF({ orientation: 'landscape', format: 'a4' });
+  const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
   const facultyMap = Object.fromEntries(faculty.map((f) => [f.id, f]));
   const subjectsMap = Object.fromEntries(subjects.map((s) => [s.code, s]));
 

@@ -32,7 +32,8 @@ import {
 import {
   exportAllSectionsToWord,
   exportAllFacultyToWord,
-  exportSelectedFacultyTimetableToWord
+  exportSelectedFacultyTimetableToWord,
+  exportSectionToWord
 } from '../../services/wordExport';
 import { DAYS, DAY_PERIODS, sortSections } from '../../types/constants';
 
@@ -85,6 +86,12 @@ export const ExportStep = ({
   const handleExportSingleSectionPdf = () => {
     if (activeSection) {
       exportSectionToPdf(activeSection, activeTimetable, subjects, faculty);
+    }
+  };
+
+  const handleExportSingleSectionWord = () => {
+    if (activeSection) {
+      exportSectionToWord(activeSection, activeTimetable, subjects, faculty);
     }
   };
 
@@ -309,12 +316,18 @@ export const ExportStep = ({
                       </option>
                     ))}
                   </select>
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-3 gap-2">
                     <button
                       onClick={handleExportSingleSectionPdf}
                       className="py-1.5 px-2 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 text-xs font-semibold border border-rose-200 text-center"
                     >
                       Single PDF
+                    </button>
+                    <button
+                      onClick={handleExportSingleSectionWord}
+                      className="py-1.5 px-2 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-semibold border border-indigo-200 text-center"
+                    >
+                      Single Word
                     </button>
                     <button
                       onClick={handleExportSingleSectionExcel}

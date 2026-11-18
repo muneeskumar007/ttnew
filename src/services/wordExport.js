@@ -184,7 +184,7 @@ export const downloadWordDocument = (filename, htmlBody, orientation = 'landscap
   URL.revokeObjectURL(url);
 };
 
-// 1. Export All Sections Timetable to Word (.doc) in exact uploaded format
+// 1. Export All Sections Timetable to Word (.doc) in compact Portrait format
 export const exportAllSectionsToWord = (sections, timetables, subjects, faculty) => {
   if (!sections || sections.length === 0) return;
 
@@ -277,33 +277,33 @@ export const exportAllSectionsToWord = (sections, timetables, subjects, faculty)
       const isBlock34 = p3 && p4 && p3.subjectCode && p3.subjectCode === p4.subjectCode && (p3.type === 'lab' || isBlock12);
 
       if (isLab123) {
-        morningCells += `<td colspan="3" style="font-weight:bold;">${getAcronym(p1)}</td>`;
-        morningCells += `<td>${getAcronym(p4)}</td>`;
+        morningCells += `<td colspan="3" style="font-weight:bold; font-size:7pt;">${getAcronym(p1)}</td>`;
+        morningCells += `<td style="font-size:7pt;">${getAcronym(p4)}</td>`;
       } else if (isLab234) {
-        morningCells += `<td>${getAcronym(p1)}</td>`;
-        morningCells += `<td colspan="3" style="font-weight:bold;">${getAcronym(p2)}</td>`;
+        morningCells += `<td style="font-size:7pt;">${getAcronym(p1)}</td>`;
+        morningCells += `<td colspan="3" style="font-weight:bold; font-size:7pt;">${getAcronym(p2)}</td>`;
       } else if (isBlock12 && isBlock34) {
-        morningCells += `<td colspan="2" style="font-weight:bold;">${getAcronym(p1)}</td>`;
-        morningCells += `<td colspan="2" style="font-weight:bold;">${getAcronym(p3)}</td>`;
+        morningCells += `<td colspan="2" style="font-weight:bold; font-size:7pt;">${getAcronym(p1)}</td>`;
+        morningCells += `<td colspan="2" style="font-weight:bold; font-size:7pt;">${getAcronym(p3)}</td>`;
       } else if (isBlock12) {
-        morningCells += `<td colspan="2" style="font-weight:bold;">${getAcronym(p1)}</td>`;
-        morningCells += `<td>${getAcronym(p3)}</td>`;
-        morningCells += `<td>${getAcronym(p4)}</td>`;
+        morningCells += `<td colspan="2" style="font-weight:bold; font-size:7pt;">${getAcronym(p1)}</td>`;
+        morningCells += `<td style="font-size:7pt;">${getAcronym(p3)}</td>`;
+        morningCells += `<td style="font-size:7pt;">${getAcronym(p4)}</td>`;
       } else if (isBlock34) {
-        morningCells += `<td>${getAcronym(p1)}</td>`;
-        morningCells += `<td>${getAcronym(p2)}</td>`;
-        morningCells += `<td colspan="2" style="font-weight:bold;">${getAcronym(p3)}</td>`;
+        morningCells += `<td style="font-size:7pt;">${getAcronym(p1)}</td>`;
+        morningCells += `<td style="font-size:7pt;">${getAcronym(p2)}</td>`;
+        morningCells += `<td colspan="2" style="font-weight:bold; font-size:7pt;">${getAcronym(p3)}</td>`;
       } else {
-        morningCells += `<td>${getAcronym(p1)}</td>`;
-        morningCells += `<td>${getAcronym(p2)}</td>`;
-        morningCells += `<td>${getAcronym(p3)}</td>`;
-        morningCells += `<td>${getAcronym(p4)}</td>`;
+        morningCells += `<td style="font-size:7pt;">${getAcronym(p1)}</td>`;
+        morningCells += `<td style="font-size:7pt;">${getAcronym(p2)}</td>`;
+        morningCells += `<td style="font-size:7pt;">${getAcronym(p3)}</td>`;
+        morningCells += `<td style="font-size:7pt;">${getAcronym(p4)}</td>`;
       }
 
       // Afternoon session (P5-P7)
       let afternoonCells = '';
       if (day === 'Saturday') {
-        afternoonCells = `<td colspan="3" style="background-color:#f8fafc;"></td>`;
+        afternoonCells = `<td colspan="3" style="background-color:#f8fafc; font-size:7pt; color:#94a3b8;">INACTIVE</td>`;
       } else {
         const p5 = dayGrid[5];
         const p6 = dayGrid[6];
@@ -313,19 +313,19 @@ export const exportAllSectionsToWord = (sections, timetables, subjects, faculty)
         const isBlock56 = p5 && p6 && p5.subjectCode && p5.subjectCode === p6.subjectCode && p5.type === 'lab';
 
         if (isLab567) {
-          afternoonCells = `<td colspan="3" style="font-weight:bold;">${getAcronym(p5)}</td>`;
+          afternoonCells += `<td colspan="3" style="font-weight:bold; font-size:7pt;">${getAcronym(p5)}</td>`;
         } else if (isBlock56) {
-          afternoonCells = `<td colspan="2" style="font-weight:bold;">${getAcronym(p5)}</td><td>${getAcronym(p7)}</td>`;
+          afternoonCells += `<td colspan="2" style="font-weight:bold; font-size:7pt;">${getAcronym(p5)}</td><td style="font-size:7pt;">${getAcronym(p7)}</td>`;
         } else {
-          afternoonCells = `<td>${getAcronym(p5)}</td><td>${getAcronym(p6)}</td><td>${getAcronym(p7)}</td>`;
+          afternoonCells += `<td style="font-size:7pt;">${getAcronym(p5)}</td><td style="font-size:7pt;">${getAcronym(p6)}</td><td style="font-size:7pt;">${getAcronym(p7)}</td>`;
         }
       }
 
       gridRowsHtml += `
         <tr>
-          <td style="font-weight:bold; background-color:#f8fafc; text-align:left; padding-left:8px;">${dayUpper}</td>
+          <td style="font-weight:bold; background-color:#f8fafc; text-align:left; padding-left:6px; font-size:7.5pt;">${dayUpper}</td>
           ${morningCells}
-          <td style="background-color:#f8fafc; font-size:7.5pt; font-weight:bold;"></td>
+          <td style="background-color:#fef3c7; color:#92400e; font-size:7pt; font-weight:bold; padding:2px;">LUNCH<br/>BREAK</td>
           ${afternoonCells}
         </tr>
       `;
@@ -336,9 +336,9 @@ export const exportAllSectionsToWord = (sections, timetables, subjects, faculty)
     subjectList.forEach((sub) => {
       subjectRowsHtml += `
         <tr>
-          <td style="font-weight:bold; width:15%;">${sub.code}</td>
-          <td style="width:55%; text-align:left; padding-left:8px;">${sub.name}</td>
-          <td style="width:30%; text-align:left; padding-left:8px;">${sub.facultyName}</td>
+          <td style="font-weight:bold; width:16%;">${sub.code}</td>
+          <td style="width:48%; text-align:left; padding-left:6px;">${sub.name}</td>
+          <td style="width:36%; text-align:left; padding-left:6px;">${sub.facultyName}</td>
         </tr>
       `;
     });
@@ -348,37 +348,37 @@ export const exportAllSectionsToWord = (sections, timetables, subjects, faculty)
       <div style="margin-bottom: 15px;">
         <table style="width:100%; border:none; margin-bottom:2px;">
           <tr>
-            <td style="border:none; text-align:left; font-size:12pt; font-weight:bold; width:75%;">
+            <td style="border:none; text-align:left; font-size:11pt; font-weight:bold; width:75%;">
               ADHIYAMAAN COLLEGE OF ENGINEERING (An Autonomous Institution)
             </td>
-            <td style="border:none; text-align:right; font-size:11pt; font-weight:bold; width:25%;">
+            <td style="border:none; text-align:right; font-size:10pt; font-weight:bold; width:25%;">
               AY: 2026-2027
             </td>
           </tr>
         </table>
         
-        <div class="doc-title">CLASS TIME TABLE (WEEK PLAN)</div>
+        <div class="doc-title" style="font-size:11pt; font-weight:bold; text-align:center; margin:2px 0 4px 0;">CLASS TIME TABLE (WEEK PLAN)</div>
 
-        <table class="meta-bar">
+        <table class="meta-bar" style="width:100%; border:none; margin-bottom:5px; font-size:9pt; font-weight:bold;">
           <tr>
-            <td style="text-align:left; width:33%;">PROGRAM:&nbsp;&nbsp;B.E-CSE</td>
-            <td style="text-align:center; width:34%;">Year/Semester:${yearSem}</td>
+            <td style="text-align:left; width:33%;">PROGRAM:&nbsp;&nbsp;B.E-${section.department || 'CSE'}</td>
+            <td style="text-align:center; width:34%;">Year/Semester: ${yearSem}</td>
             <td style="text-align:right; width:33%;">Room No:&nbsp;&nbsp;${roomNo}</td>
           </tr>
         </table>
 
-        <table class="grid-table">
+        <table class="grid-table" style="font-size:7.5pt; width:100%;">
           <thead>
             <tr>
               <th style="width:12%;">DAY / PERIOD</th>
-              <th style="width:11%;">1<br/>8.30am-9.25am</th>
-              <th style="width:11%;">2<br/>9.25am- 10.20am</th>
-              <th style="width:11%;">3<br/>10.30am-11.25am</th>
-              <th style="width:11%;">4<br/>11.25am-12.20Pm</th>
-              <th style="width:6%;">Lunch<br/>break</th>
-              <th style="width:11%;">5<br/>1.20pm-2.15pm</th>
-              <th style="width:11%;">6<br/>2.15pm-3.10pm</th>
-              <th style="width:11%;">7<br/>3.10pm-4.05pm</th>
+              <th style="width:11.5%;">1<br/><span style="font-size:6.5pt; font-weight:normal;">8.30-9.25</span></th>
+              <th style="width:11.5%;">2<br/><span style="font-size:6.5pt; font-weight:normal;">9.25-10.20</span></th>
+              <th style="width:11.5%;">3<br/><span style="font-size:6.5pt; font-weight:normal;">10.30-11.25</span></th>
+              <th style="width:11.5%;">4<br/><span style="font-size:6.5pt; font-weight:normal;">11.25-12.20</span></th>
+              <th style="width:6.5%;">Lunch<br/>break</th>
+              <th style="width:11.5%;">5<br/><span style="font-size:6.5pt; font-weight:normal;">1.20-2.15</span></th>
+              <th style="width:11.5%;">6<br/><span style="font-size:6.5pt; font-weight:normal;">2.15-3.10</span></th>
+              <th style="width:11.5%;">7<br/><span style="font-size:6.5pt; font-weight:normal;">3.10-4.05</span></th>
             </tr>
           </thead>
           <tbody>
@@ -386,12 +386,12 @@ export const exportAllSectionsToWord = (sections, timetables, subjects, faculty)
           </tbody>
         </table>
 
-        <table class="sub-table">
+        <table class="sub-table" style="font-size:7.5pt; width:100%;">
           <thead>
             <tr>
-              <th style="width:15%;">Subject code</th>
-              <th style="width:55%;">Subject</th>
-              <th style="width:30%;">Faculty Name</th>
+              <th style="width:16%;">Subject code</th>
+              <th style="width:48%;">Subject</th>
+              <th style="width:36%;">Faculty Name</th>
             </tr>
           </thead>
           <tbody>
@@ -399,20 +399,26 @@ export const exportAllSectionsToWord = (sections, timetables, subjects, faculty)
           </tbody>
         </table>
 
-        <table class="sig-bar">
+        <table class="sig-bar" style="margin-top:20px; font-size:8.5pt;">
           <tr>
-            <td>Class Advisor</td>
-            <td>Time Table Incharge</td>
-            <td>HOD</td>
-            <td>Dean (Academics)</td>
-            <td>Principal</td>
+            <td style="width:20%;">Class Advisor</td>
+            <td style="width:20%;">Time Table Incharge</td>
+            <td style="width:20%;">HOD</td>
+            <td style="width:20%;">Dean (Academics)</td>
+            <td style="width:20%;">Principal</td>
           </tr>
         </table>
       </div>
     `;
   });
 
-  downloadWordDocument('Overall_All_Sections_Timetable.doc', docContent);
+  downloadWordDocument('Overall_All_Sections_Timetable.doc', docContent, 'portrait');
+};
+
+// Helper: Export Single Section Timetable to Word (.doc) in compact Portrait format
+export const exportSectionToWord = (section, timetable, subjects, faculty) => {
+  if (!section) return;
+  exportAllSectionsToWord([section], { [section.id]: timetable }, subjects, faculty);
 };
 
 // 2. Export All Faculty Timetables to Word (.doc) in compact Portrait format
