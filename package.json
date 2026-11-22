@@ -1,7 +1,7 @@
 {
-  "name": "college-timetable-generator",
-  "description": "College Timetable Generator Desktop Application with Independent Local SQLite Storage",
-  "author": "College Timetable Generator Team",
+  "name": "ace-timetable",
+  "description": "ACE Timetable Desktop Application with Independent Local SQLite Storage",
+  "author": "ACE Timetable Team",
   "private": true,
   "version": "1.0.0",
   "type": "module",
@@ -17,8 +17,8 @@
     "electron:all": "vite build && electron-builder --win nsis portable"
   },
   "build": {
-    "appId": "com.college.timetablegenerator",
-    "productName": "College Timetable Generator",
+    "appId": "com.ace.timetable",
+    "productName": "ACE Timetable",
     "electronVersion": "32.3.3",
     "electronDist": "node_modules/electron/dist",
     "directories": {
@@ -38,20 +38,16 @@
         {
           "target": "nsis",
           "arch": ["x64"]
-        },
-        {
-          "target": "portable",
-          "arch": ["x64"]
         }
       ],
-      "artifactName": "${productName}-Setup.${ext}"
+      "artifactName": "${productName}.${ext}"
     },
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
-      "shortcutName": "College Timetable Generator",
+      "shortcutName": "ACE Timetable",
       "runAfterFinish": true,
       "deleteAppDataOnUninstall": false
     },

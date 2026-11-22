@@ -61,7 +61,7 @@ function createMainWindow() {
     height: 860,
     minWidth: 1024,
     minHeight: 700,
-    title: 'College Timetable Generator',
+    title: 'ACE Timetable',
     backgroundColor: '#0f172a',
     autoHideMenuBar: true,
     show: false, // Show once ready-to-show to prevent visual flicker

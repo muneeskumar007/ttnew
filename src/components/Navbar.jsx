@@ -66,10 +66,10 @@ export const Navbar = ({
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="font-bold text-base sm:text-lg leading-tight tracking-tight text-white">
-                  College Timetable Generator
+                  {isDesktop ? 'ACE Timetable' : 'College Timetable Generator'}
                 </h1>
                 <span className="hidden sm:inline-block px-2 py-0.5 text-xs font-semibold rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                  SPA
+                  {isDesktop ? 'Desktop' : 'SPA'}
                 </span>
               </div>
 
