@@ -8,9 +8,12 @@ import {
   RefreshCw, 
   CloudUpload, 
   AlertTriangle,
-  RotateCcw
+  RotateCcw,
+  Database,
+  Save
 } from 'lucide-react';
 import { FirebaseModal } from './FirebaseModal';
+import { DesktopStorageModal } from './DesktopStorageModal';
 import { ConfirmModal } from './ConfirmModal';
 
 export const Navbar = ({
@@ -24,8 +27,10 @@ export const Navbar = ({
   onRevertAllData,
   onSaveConfig,
   onTriggerSync,
+  isDesktop = false,
 }) => {
   const [showConfigModal, setShowConfigModal] = useState(false);
+  const [showDesktopModal, setShowDesktopModal] = useState(false);
   const [showClearConfirm, setShowClearConfirm] = useState(false);
   const [showRevertConfirm, setShowRevertConfirm] = useState(false);
   const [isEditingDept, setIsEditingDept] = useState(false);
@@ -106,32 +111,51 @@ export const Navbar = ({
 
           {/* Persistence & Actions */}
           <div className="flex items-center gap-2 sm:gap-3">
-            {/* Storage Status Pill - 100% Online Firebase */}
+            {/* Storage Status Pill - SQLite Local in Desktop vs Firebase Online in Web */}
             <div
-              onClick={() => setShowConfigModal(true)}
+              onClick={() => isDesktop ? setShowDesktopModal(true) : setShowConfigModal(true)}
               className="flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-medium cursor-pointer transition-all bg-slate-800 hover:bg-slate-700 border border-slate-700 select-none"
-              title="Click to inspect Firebase Cloud Firestore sync"
+              title={isDesktop ? "Click to view local SQLite database info" : "Click to inspect Firebase Cloud Firestore sync"}
             >
-              {syncStatus === 'syncing' ? (
-                <>
-                  <RefreshCw className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
-                  <span className="text-indigo-300">Saving to Cloud...</span>
-                </>
-              ) : syncStatus === 'firestore_not_created' ? (
-                <>
-                  <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
-                  <span className="text-amber-300">Firestore Setup Needed</span>
-                </>
-              ) : syncStatus === 'error' ? (
-                <>
-                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                  <span className="text-rose-300">Firebase Reconnecting</span>
-                </>
+              {isDesktop ? (
+                syncStatus === 'syncing' ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
+                    <span className="text-indigo-300">Saving SQLite...</span>
+                  </>
+                ) : syncStatus === 'error' ? (
+                  <>
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                    <span className="text-rose-300">SQLite Error</span>
+                  </>
+                ) : (
+                  <>
+                    <Database className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-emerald-300">SQLite Local</span>
+                  </>
+                )
               ) : (
-                <>
-                  <Cloud className="w-3.5 h-3.5 text-emerald-400" />
-                  <span className="text-emerald-300">Firebase Online</span>
-                </>
+                syncStatus === 'syncing' ? (
+                  <>
+                    <RefreshCw className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
+                    <span className="text-indigo-300">Saving to Cloud...</span>
+                  </>
+                ) : syncStatus === 'firestore_not_created' ? (
+                  <>
+                    <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+                    <span className="text-amber-300">Firestore Setup Needed</span>
+                  </>
+                ) : syncStatus === 'error' ? (
+                  <>
+                    <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                    <span className="text-rose-300">Firebase Reconnecting</span>
+                  </>
+                ) : (
+                  <>
+                    <Cloud className="w-3.5 h-3.5 text-emerald-400" />
+                    <span className="text-emerald-300">Firebase Online</span>
+                  </>
+                )
               )}
               {lastSaved && (
                 <span className="hidden sm:inline text-slate-400 text-[10px]">
@@ -144,10 +168,19 @@ export const Navbar = ({
             <button
               onClick={onTriggerSync}
               className="hidden md:flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-medium text-slate-300 bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded-xl transition-colors"
-              title="Save current changes to Firebase Cloud immediately"
+              title={isDesktop ? "Save current changes to local SQLite database" : "Save current changes to Firebase Cloud immediately"}
             >
-              <CloudUpload className="w-3.5 h-3.5 text-indigo-400" />
-              <span>Save Cloud</span>
+              {isDesktop ? (
+                <>
+                  <Save className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Save SQLite</span>
+                </>
+              ) : (
+                <>
+                  <CloudUpload className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>Save Cloud</span>
+                </>
+              )}
             </button>
 
             {/* Revert All Data Option */}
@@ -205,7 +238,7 @@ export const Navbar = ({
         onCancel={() => setShowRevertConfirm(false)}
       />
 
-      {/* Cloud Diagnostic Modal (opened on clicking Firebase pill) */}
+      {/* Cloud Diagnostic Modal (opened on clicking Firebase pill in Web mode) */}
       {showConfigModal && (
         <FirebaseModal
           syncStatus={syncStatus}
@@ -215,6 +248,12 @@ export const Navbar = ({
           onTriggerSync={onTriggerSync}
         />
       )}
+
+      {/* Desktop SQLite Diagnostic Modal (opened on clicking SQLite pill in Desktop mode) */}
+      <DesktopStorageModal
+        isOpen={showDesktopModal}
+        onClose={() => setShowDesktopModal(false)}
+      />
     </>
   );
 };

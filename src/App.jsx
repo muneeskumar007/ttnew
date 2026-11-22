@@ -33,7 +33,8 @@ import {
   clearPersistedState,
   checkFirebaseStatus,
   getFirebaseConfig,
-} from './services/firebase';
+  isElectron,
+} from './services/storageAdapter';
 
 import { generateDepartmentTimetable, sanitizeAllocations } from './services/scheduler';
 import { sortSections } from './types/constants';
@@ -78,7 +79,12 @@ export function App() {
         setTimetables(res.data.timetables || {});
         setSyncStatus('synced');
         setLastSaved(res.lastUpdated || new Date().toISOString());
-        setSyncNotice({ type: 'success', text: 'Loaded latest timetable data from Firebase Cloud Firestore.' });
+        setSyncNotice({
+          type: 'success',
+          text: isElectron()
+            ? 'Loaded latest timetable data from local SQLite database.'
+            : 'Loaded latest timetable data from Firebase Cloud Firestore.'
+        });
       } else if (res.status === 'empty') {
         setSyncStatus('synced');
         setSyncNotice(null);
@@ -148,7 +154,12 @@ export function App() {
     if (res.success) {
       setSyncStatus('synced');
       setLastSaved(res.lastUpdated);
-      setSyncNotice({ type: 'success', text: 'All timetable data successfully synchronized to Firebase Cloud!' });
+      setSyncNotice({
+        type: 'success',
+        text: isElectron()
+          ? 'All timetable data successfully saved to local SQLite database!'
+          : 'All timetable data successfully synchronized to Firebase Cloud!'
+      });
       setTimeout(() => setSyncNotice(null), 4000);
     } else if (res.isSetupRequired) {
       setSyncStatus('firestore_not_created');
@@ -292,10 +303,11 @@ export function App() {
         onRevertAllData={handleRevertAllData}
         onSaveConfig={handleSaveConfig}
         onTriggerSync={handleTriggerSync}
+        isDesktop={isElectron()}
       />
 
-      {/* Online Firebase Status / Activation Banner */}
-      {syncStatus === 'firestore_not_created' && (
+      {/* Online Firebase Status / Activation Banner (Only shown in Web mode) */}
+      {syncStatus === 'firestore_not_created' && !isElectron() && (
         <div className="bg-amber-500 text-slate-950 px-4 py-2.5 text-xs font-medium border-b border-amber-600/40 shadow-xs flex items-center justify-between gap-4 flex-wrap">
           <div className="flex items-center gap-2">
             <AlertCircle className="w-4 h-4 shrink-0 text-slate-950" />
