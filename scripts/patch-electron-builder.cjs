@@ -5,6 +5,11 @@
 const fs = require('fs');
 const path = require('path');
 
+// Skip on non-Windows environments (such as Linux on Netlify CI/CD)
+if (process.platform !== 'win32') {
+  process.exit(0);
+}
+
 function patchFile(filePath, searchStr, replaceStr) {
   if (!fs.existsSync(filePath)) return;
   let content = fs.readFileSync(filePath, 'utf8');
