@@ -56,12 +56,17 @@ if (!gotTheLock) {
 }
 
 function createMainWindow() {
+  const iconPath = app.isPackaged
+    ? path.join(__dirname, '../dist/icon.png')
+    : path.join(__dirname, '../public/icon.png');
+
   mainWindow = new BrowserWindow({
     width: 1366,
     height: 860,
     minWidth: 1024,
     minHeight: 700,
     title: 'ACE Timetable',
+    icon: fs.existsSync(iconPath) ? iconPath : undefined,
     backgroundColor: '#0f172a',
     autoHideMenuBar: true,
     show: false, // Show once ready-to-show to prevent visual flicker

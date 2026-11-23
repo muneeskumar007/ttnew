@@ -60,8 +60,16 @@ export const Navbar = ({
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           {/* Logo & Department Title */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-indigo-600 flex items-center justify-center shadow-inner shadow-indigo-400 shrink-0">
-              <Calendar className="w-6 h-6 text-white" />
+            <div className="w-11 h-11 rounded-xl bg-white p-1 flex items-center justify-center shadow-md shadow-black/20 shrink-0 border border-slate-700/50 overflow-hidden">
+              <img 
+                src="./acelogo.png" 
+                alt="ACE Logo" 
+                className="w-full h-full object-contain"
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src = '/acelogo.png';
+                }}
+              />
             </div>
             <div>
               <div className="flex items-center gap-2">

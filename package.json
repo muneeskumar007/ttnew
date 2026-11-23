@@ -40,6 +40,7 @@
           "arch": ["x64"]
         }
       ],
+      "icon": "public/icon.ico",
       "artifactName": "${productName}.${ext}"
     },
     "nsis": {
